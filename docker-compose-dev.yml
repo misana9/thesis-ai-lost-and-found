@@ -1,0 +1,25 @@
+services:
+  api:
+    build: backend/
+    depends_on:
+      - postgres
+    
+    volumes:
+      - ./:/usr/app:ro
+    ports:
+      - "8000:8000"
+    env_file:
+      - backend/.env
+  
+  postgres:
+    image: postgres
+    environment:
+       - POSTGRES_USER=jdeeza
+       - POSTGRES_PASSWORD=password123
+       - POSTGRES_DB=WatchDog
+    volumes:
+      - postgres-db:/var/lib/postgresql
+
+      # add your DB/env vars here
+volumes:
+  postgres-db:

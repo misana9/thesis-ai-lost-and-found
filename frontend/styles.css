@@ -1,0 +1,22 @@
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+header, footer {
+  background: #333;
+  color: white;
+  padding: 1rem;
+  text-align: center;
+}
+
+#app {
+  flex: 1; /* fills space → pushes footer down */
+  padding: 1rem;
+}
