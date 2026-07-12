@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>FindIt — Report a Found Item</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --navy: #0F172A;
+    --navy-mid: #1E293B;
+    --navy-light: #334155;
+    --indigo: #6366F1;
+    --indigo-light: #818CF8;
+    --emerald: #10B981;
+    --amber: #F59E0B;
+    --text-primary: #F8FAFC;
+    --text-secondary: #94A3B8;
+    --text-muted: #64748B;
+    --border: #1E293B;
+    --card: #ffffff;
+    --radius: 16px;
+    --radius-sm: 10px;
+  }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--navy);
+    color: var(--text-primary);
+    min-height: 100vh;
+  }
+
+  /* Top nav */
+  nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--navy-mid);
+    position: sticky;
+    top: 0;
+    background: var(--navy);
+    z-index: 10;
+  }
+
+  .logo {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    color: var(--text-primary);
+  }
+
+  .logo span { color: var(--indigo); }
+
+  .nav-pill {
+    background: var(--indigo);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 16px;
+    border-radius: 999px;
+    border: none;
+    cursor: pointer;
+  }
+
+  /* Page layout */
+  .page {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 32px 20px 60px;
+  }
+
+  .page-header {
+    margin-bottom: 28px;
+  }
+
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--indigo-light);
+    margin-bottom: 8px;
+  }
+
+  h1 {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    line-height: 1.2;
+    color: var(--text-primary);
+  }
+
+  h1 span { color: var(--indigo-light); }
+
+  .subtitle {
+    margin-top: 8px;
+    font-size: 14px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+  }
+
+  /* Card */
+  .card {
+    background: var(--card);
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
+
+  /* Upload zone */
+  .upload-zone {
+    border: 2px dashed #CBD5E1;
+    border-radius: var(--radius);
+    padding: 40px 24px;
+    text-align: center;
+    background: #F8FAFC;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    margin-bottom: 16px;
+  }
+
+  .upload-zone:hover {
+    border-color: var(--indigo);
+    background: #EEF2FF;
+  }
+
+  .upload-icon {
+    width: 52px;
+    height: 52px;
+    background: #E0E7FF;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 14px;
+  }
+
+  .upload-icon svg { width: 26px; height: 26px; color: var(--indigo); }
+
+  .upload-label {
+    font-size: 15px;
+    font-weight: 600;
+    color: #1E293B;
+    margin-bottom: 4px;
+  }
+
+  .upload-sub {
+    font-size: 13px;
+    color: #64748B;
+  }
+
+  /* Uploaded preview card */
+  .preview-card {
+    background: #fff;
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1.5px solid #E2E8F0;
+    margin-bottom: 16px;
+  }
+
+  .preview-img-wrap {
+    position: relative;
+    background: #F1F5F9;
+    height: 220px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Simulated backpack image using CSS shapes */
+  .backpack-art {
+    position: relative;
+    width: 120px;
+    height: 150px;
+  }
+
+  .bp-body {
+    position: absolute;
+    bottom: 0;
+    left: 10px;
+    width: 100px;
+    height: 120px;
+    background: #1a1a2e;
+    border-radius: 14px 14px 12px 12px;
+  }
+
+  .bp-top {
+    position: absolute;
+    top: 0;
+    left: 18px;
+    width: 84px;
+    height: 40px;
+    background: #16213e;
+    border-radius: 42px 42px 0 0;
+  }
+
+  .bp-strap-l {
+    position: absolute;
+    left: 18px;
+    top: 30px;
+    width: 16px;
+    height: 80px;
+    background: #0f3460;
+    border-radius: 8px;
+  }
+
+  .bp-strap-r {
+    position: absolute;
+    right: 18px;
+    top: 30px;
+    width: 16px;
+    height: 80px;
+    background: #0f3460;
+    border-radius: 8px;
+  }
+
+  .bp-zipper {
+    position: absolute;
+    bottom: 38px;
+    left: 10px;
+    width: 100px;
+    height: 4px;
+    background: #E11D48;
+    border-radius: 2px;
+  }
+
+  .bp-zipper-pull {
+    position: absolute;
+    bottom: 32px;
+    right: 28px;
+    width: 8px;
+    height: 10px;
+    background: #FB7185;
+    border-radius: 3px;
+  }
+
+  .bp-pocket {
+    position: absolute;
+    bottom: 18px;
+    left: 22px;
+    width: 76px;
+    height: 50px;
+    background: #16213e;
+    border-radius: 8px;
+    border: 2px solid #0f3460;
+  }
+
+  .bp-pocket-zipper {
+    position: absolute;
+    bottom: 50px;
+    left: 22px;
+    width: 76px;
+    height: 3px;
+    background: #E11D48;
+    border-radius: 2px;
+  }
+
+  .img-badge {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: rgba(16,185,129,0.15);
+    border: 1px solid rgba(16,185,129,0.4);
+    color: #059669;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 999px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .img-badge::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    background: #10B981;
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  .preview-meta {
+    padding: 16px 18px;
+  }
+
+  .file-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: #1E293B;
+    margin-bottom: 3px;
+  }
+
+  .file-info {
+    font-size: 12px;
+    color: #94A3B8;
+  }
+
+  /* Form section */
+  .form-section {
+    background: #fff;
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 16px;
+    border: 1.5px solid #E2E8F0;
+  }
+
+  .section-label {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: #64748B;
+    margin-bottom: 14px;
+  }
+
+  .field {
+    margin-bottom: 14px;
+  }
+
+  .field:last-child { margin-bottom: 0; }
+
+  label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: #374151;
+    margin-bottom: 6px;
+  }
+
+  input[type="text"], textarea, select {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1.5px solid #E2E8F0;
+    border-radius: var(--radius-sm);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    color: #1E293B;
+    background: #F8FAFC;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  input[type="text"]:focus, textarea:focus, select:focus {
+    border-color: var(--indigo);
+    background: #fff;
+  }
+
+  textarea { height: 90px; resize: none; line-height: 1.5; }
+
+  .row-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  /* AI hint banner */
+  .ai-hint {
+    background: linear-gradient(135deg, #EEF2FF 0%, #F0FDF4 100%);
+    border: 1px solid #C7D2FE;
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .ai-hint-icon {
+    width: 28px;
+    height: 28px;
+    background: var(--indigo);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .ai-hint-icon svg { width: 15px; height: 15px; color: #fff; }
+
+  .ai-hint-text {
+    font-size: 13px;
+    color: #3730A3;
+    line-height: 1.5;
+  }
+
+  .ai-hint-text strong { font-weight: 600; }
+
+  /* Submit button */
+  .btn-primary {
+    width: 100%;
+    padding: 15px;
+    background: var(--indigo);
+    color: #fff;
+    font-family: 'Inter', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    letter-spacing: -0.2px;
+  }
+
+  .btn-primary:hover { background: #4F46E5; }
+  .btn-primary:active { transform: scale(0.99); }
+
+  /* Bottom hint */
+  .bottom-note {
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 14px;
+    line-height: 1.5;
+  }
+
+  /* Steps indicator */
+  .steps {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin-bottom: 28px;
+  }
+
+  .step {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+  }
+
+  .step.active { color: var(--indigo-light); }
+  .step.done { color: var(--emerald); }
+
+  .step-num {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--navy-mid);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .step.active .step-num { background: var(--indigo); color: #fff; }
+  .step.done .step-num { background: var(--emerald); color: #fff; }
+
+  .step-line {
+    flex: 1;
+    height: 1px;
+    background: var(--navy-mid);
+    margin: 0 8px;
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="logo">Find<span>It</span></div>
+  <button class="nav-pill">Sign in</button>
+</nav>
+
+<div class="page">
+  <div class="page-header">
+    <div class="eyebrow">Found something?</div>
+    <h1>Report a <span>found item</span></h1>
+    <p class="subtitle">Upload a photo and we'll automatically match it with people who reported it missing.</p>
+  </div>
+
+  <!-- Step indicator -->
+  <div class="steps">
+    <div class="step done">
+      <div class="step-num">✓</div>
+      Photo
+    </div>
+    <div class="step-line"></div>
+    <div class="step active">
+      <div class="step-num">2</div>
+      Details
+    </div>
+    <div class="step-line"></div>
+    <div class="step">
+      <div class="step-num">3</div>
+      Submit
+    </div>
+  </div>
+
+  <!-- Uploaded preview -->
+  <div class="preview-card">
+    <div class="preview-img-wrap">
+      <!-- CSS backpack art -->
+      <div class="backpack-art">
+        <div class="bp-top"></div>
+        <div class="bp-strap-l"></div>
+        <div class="bp-strap-r"></div>
+        <div class="bp-body"></div>
+        <div class="bp-pocket"></div>
+        <div class="bp-zipper"></div>
+        <div class="bp-zipper-pull"></div>
+        <div class="bp-pocket-zipper"></div>
+      </div>
+      <div class="img-badge">Photo uploaded</div>
+    </div>
+    <div class="preview-meta">
+      <div class="file-name">found_item_photo.jpg</div>
+      <div class="file-info">2.4 MB · Uploaded just now · Ready for matching</div>
+    </div>
+  </div>
+
+  <!-- AI hint -->
+  <div class="ai-hint">
+    <div class="ai-hint-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 6v6l4 2"/><circle cx="18" cy="6" r="3" fill="currentColor" stroke="none"/>
+      </svg>
+    </div>
+    <div class="ai-hint-text">
+      <strong>AI is analysing your photo.</strong> Your image has been embedded and is already being compared against 24 active lost item reports.
+    </div>
+  </div>
+
+  <!-- Details form -->
+  <div class="form-section">
+    <div class="section-label">Item details</div>
+
+    <div class="field">
+      <label>Item type</label>
+      <select>
+        <option selected>Backpack / Bag</option>
+        <option>Wallet / Purse</option>
+        <option>Electronics</option>
+        <option>Clothing</option>
+        <option>Keys</option>
+        <option>Other</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Description <span style="color:#94A3B8;font-weight:400">(optional)</span></label>
+      <textarea placeholder="e.g. Black backpack, has a red zipper on the front pocket, looks like it has a laptop inside…">Black backpack with a distinctive red zipper on the front pocket. Appears to contain a laptop and some books. Found near the north entrance.</textarea>
+    </div>
+
+    <div class="row-2">
+      <div class="field">
+        <label>Where found</label>
+        <input type="text" value="Main Library, Floor 2"/>
+      </div>
+      <div class="field">
+        <label>Date found</label>
+        <input type="text" value="June 11, 2026"/>
+      </div>
+    </div>
+  </div>
+
+  <!-- Contact form -->
+  <div class="form-section">
+    <div class="section-label">Your contact</div>
+    <div class="field">
+      <label>Email</label>
+      <input type="text" value="finder@example.com"/>
+    </div>
+    <div class="bottom-note" style="text-align:left;margin-top:0;font-size:12px;color:#94A3B8">
+      We'll only use this to notify you when the owner claims the item.
+    </div>
+  </div>
+
+  <button class="btn-primary">Submit found item →</button>
+  <p class="bottom-note">Your photo is processed locally. We never share your contact without consent.</p>
+</div>
+
+</body>
+</html>

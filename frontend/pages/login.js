@@ -40,7 +40,7 @@ export function initLogin() {
                     message: data.detail
                 }
             }
-            alert("LOGIN SUCCESSFUL")
+            navigate("/register")
         }catch(message){
             alert(message.message)
         }

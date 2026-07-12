@@ -10,6 +10,15 @@ const routes = {
 };
 
 export function navigate(path) {
+  const protectedPages = ["dashboard", "lost", "found", "admin"];
+  
+  const token = localStorage.getItem("token")
+
+  // if (protectedPages.includes(page) && !token) {
+  //       showLogin();
+  //       return;
+  //   }
+
   window.history.pushState({}, '', path);
   loadRoute(path);
 }

@@ -1,0 +1,1399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>FindIt — Campus Lost & Found</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --ink: #0D1117;
+  --ink-mid: #161B22;
+  --ink-edge: #21262D;
+  --indigo: #6366F1;
+  --indigo-dim: #4F46E5;
+  --indigo-glow: rgba(99,102,241,0.18);
+  --emerald: #10B981;
+  --amber: #F59E0B;
+  --red: #EF4444;
+  --parchment: #F5F0E8;
+  --text-1: #F0F6FC;
+  --text-2: #8B949E;
+  --text-3: #484F58;
+  --card-white: #ffffff;
+  --card-border: #E2E8F0;
+  --detail-border: #F1F5F9;
+  --radius: 18px;
+  --radius-sm: 12px;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--ink);
+  color: var(--text-1);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── VIEW SYSTEM ── */
+.view { display: none; opacity: 0; }
+.view.active { display: block; animation: fadeIn 0.25s ease forwards; }
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .view.active { animation: none; opacity: 1; }
+  .radar-ring, .radar-center, .live-dot, .query-dot, .match-dot,
+  .match-banner-dot, .success-check, .spinner { animation: none !important; }
+}
+
+/* ── NAV ── */
+nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(13,17,23,0.85);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--ink-edge);
+}
+
+.logo { font-size: 20px; font-weight: 800; letter-spacing: -0.6px; color: var(--text-1); cursor: pointer; }
+.logo span { color: var(--indigo); }
+
+.nav-right { display: flex; align-items: center; gap: 10px; }
+
+.nav-link {
+  font-size: 13px; font-weight: 500; color: var(--text-2);
+  text-decoration: none; padding: 6px 12px; border-radius: 8px; transition: color 0.2s;
+}
+.nav-link:hover { color: var(--text-1); }
+
+.nav-btn {
+  font-size: 13px; font-weight: 600; color: var(--text-1);
+  background: var(--ink-edge); border: 1px solid var(--ink-edge);
+  padding: 7px 16px; border-radius: 999px; cursor: pointer; text-decoration: none;
+}
+
+.back-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 500; color: var(--text-2);
+  text-decoration: none; margin-bottom: 20px; cursor: pointer;
+  background: none; border: none; font-family: inherit; padding: 0;
+}
+.back-link:hover { color: var(--text-1); }
+
+/* ── HERO ── */
+.hero {
+  position: relative; padding: 64px 24px 48px;
+  text-align: center; overflow: hidden;
+}
+
+.radar-wrap {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 500px; height: 500px; pointer-events: none;
+}
+
+@keyframes radar-ring {
+  0% { transform: scale(0.2); opacity: 0.5; }
+  100% { transform: scale(1); opacity: 0; }
+}
+
+.radar-ring {
+  position: absolute; inset: 0; border-radius: 50%;
+  border: 1.5px solid var(--indigo);
+  animation: radar-ring 3s ease-out infinite;
+}
+.radar-ring:nth-child(2) { animation-delay: 1s; }
+.radar-ring:nth-child(3) { animation-delay: 2s; }
+
+.radar-center {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 10px; height: 10px; background: var(--indigo);
+  border-radius: 50%; box-shadow: 0 0 16px 4px var(--indigo-glow);
+}
+
+.eyebrow {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 11px; font-weight: 600; letter-spacing: 1.4px;
+  text-transform: uppercase; color: var(--indigo);
+  background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.25);
+  padding: 5px 14px; border-radius: 999px; margin-bottom: 24px; position: relative;
+}
+
+.live-dot {
+  width: 6px; height: 6px; background: var(--emerald);
+  border-radius: 50%; display: inline-block;
+  animation: blink 1.8s ease-in-out infinite;
+}
+
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+h1 {
+  font-size: clamp(36px, 8vw, 56px); font-weight: 800;
+  letter-spacing: -1.5px; line-height: 1.08; color: var(--text-1);
+  position: relative; margin-bottom: 20px;
+}
+h1 em { font-style: normal; color: var(--parchment); position: relative; }
+h1 em::after {
+  content: ''; position: absolute; bottom: 2px; left: 0; right: 0;
+  height: 3px; background: var(--indigo); border-radius: 2px; opacity: 0.7;
+}
+
+.hero-sub {
+  font-size: 16px; color: var(--text-2); line-height: 1.65;
+  max-width: 360px; margin: 0 auto 36px; position: relative;
+}
+
+.fork {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  max-width: 480px; margin: 0 auto 16px; position: relative;
+}
+@media (max-width: 400px) { .fork { grid-template-columns: 1fr; } }
+
+.fork-card {
+  border-radius: var(--radius); padding: 24px 20px; text-align: left;
+  cursor: pointer; text-decoration: none; display: block;
+  transition: transform 0.2s, box-shadow 0.2s; position: relative; overflow: hidden;
+  border: none; font-family: inherit; width: 100%;
+}
+.fork-card:hover { transform: translateY(-3px); }
+.fork-card.lost { background: var(--indigo); box-shadow: 0 8px 32px rgba(99,102,241,0.35); }
+.fork-card.found { background: var(--ink-mid); border: 1.5px solid var(--ink-edge); }
+.fork-card.lost:hover { box-shadow: 0 12px 40px rgba(99,102,241,0.45); }
+
+.fork-emoji { font-size: 28px; margin-bottom: 12px; display: block; line-height: 1; }
+.fork-title { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; margin-bottom: 5px; color: #fff; }
+.fork-card.found .fork-title { color: var(--text-1); }
+.fork-desc { font-size: 13px; line-height: 1.5; color: rgba(255,255,255,0.75); }
+.fork-card.found .fork-desc { color: var(--text-2); }
+.fork-arrow { position: absolute; bottom: 18px; right: 18px; font-size: 18px; opacity: 0.6; }
+
+.stats-strip {
+  display: flex; justify-content: center; gap: 0;
+  max-width: 480px; margin: 0 auto 52px;
+  background: var(--ink-mid); border: 1px solid var(--ink-edge);
+  border-radius: var(--radius-sm); overflow: hidden;
+}
+.stat { flex: 1; padding: 14px 12px; text-align: center; border-right: 1px solid var(--ink-edge); }
+.stat:last-child { border-right: none; }
+.stat-num { font-size: 20px; font-weight: 800; letter-spacing: -0.5px; color: var(--text-1); margin-bottom: 2px; }
+.stat-num.green { color: var(--emerald); }
+.stat-num.indigo { color: var(--indigo); }
+.stat-num.amber { color: var(--amber); }
+.stat-label { font-size: 11px; color: var(--text-2); line-height: 1.3; }
+
+.section { padding: 48px 24px; max-width: 480px; margin: 0 auto; }
+.section-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 1.4px; text-transform: uppercase; color: var(--indigo); margin-bottom: 10px; }
+.section-title { font-size: 26px; font-weight: 800; letter-spacing: -0.6px; margin-bottom: 28px; line-height: 1.2; }
+
+.steps-list { display: flex; flex-direction: column; gap: 4px; }
+.step-item {
+  display: flex; gap: 16px; align-items: flex-start; padding: 18px 16px;
+  background: var(--ink-mid); border: 1px solid var(--ink-edge);
+  border-radius: var(--radius-sm); transition: border-color 0.2s;
+}
+.step-item:hover { border-color: var(--indigo); }
+.step-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+.step-icon.s1 { background: rgba(99,102,241,0.15); }
+.step-icon.s2 { background: rgba(245,158,11,0.15); }
+.step-icon.s3 { background: rgba(16,185,129,0.15); }
+.step-body-title { font-size: 15px; font-weight: 700; color: var(--text-1); margin-bottom: 4px; letter-spacing: -0.2px; }
+.step-body-desc { font-size: 13px; color: var(--text-2); line-height: 1.55; }
+
+.embed-visual {
+  background: var(--ink-mid); border: 1px solid var(--ink-edge);
+  border-radius: var(--radius); padding: 24px 20px 20px; margin: 28px 0; position: relative; overflow: hidden;
+}
+.embed-label { font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--text-3); margin-bottom: 16px; }
+.embed-canvas { position: relative; height: 160px; border-radius: 10px; background: var(--ink); overflow: hidden; }
+.dot { position: absolute; width: 10px; height: 10px; border-radius: 50%; transform: translate(-50%, -50%); }
+.dot-label { position: absolute; font-size: 10px; color: var(--text-2); white-space: nowrap; transform: translate(-50%, 8px); }
+
+@keyframes query-drop {
+  0% { opacity: 0; transform: translate(-50%,-50%) scale(0.3); }
+  60% { opacity: 1; transform: translate(-50%,-50%) scale(1.2); }
+  100% { opacity: 1; transform: translate(-50%,-50%) scale(1); }
+}
+@keyframes match-glow {
+  0%,100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.6); }
+  50% { box-shadow: 0 0 0 8px rgba(16,185,129,0); }
+}
+@keyframes conn-line {
+  0% { opacity: 0; stroke-dashoffset: 60; }
+  100% { opacity: 1; stroke-dashoffset: 0; }
+}
+.query-dot { animation: query-drop 0.8s ease 0.5s both; box-shadow: 0 0 16px 4px rgba(99,102,241,0.4); }
+.match-dot { animation: match-glow 2s ease-in-out 1.3s infinite; }
+.embed-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.embed-caption { font-size: 12px; color: var(--text-2); text-align: center; margin-top: 12px; line-height: 1.5; }
+
+.activity-section { padding: 48px 24px; max-width: 480px; margin: 0 auto; }
+.activity-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.activity-title { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+.live-badge {
+  display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600;
+  color: var(--emerald); background: rgba(16,185,129,0.1);
+  border: 1px solid rgba(16,185,129,0.25); padding: 4px 10px; border-radius: 999px;
+}
+.activity-feed { display: flex; flex-direction: column; gap: 8px; }
+.activity-item {
+  display: flex; align-items: center; gap: 13px;
+  background: var(--ink-mid); border: 1px solid var(--ink-edge);
+  border-radius: var(--radius-sm); padding: 13px 15px;
+}
+.activity-icon { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+.activity-icon.match-icon { background: rgba(16,185,129,0.12); }
+.activity-icon.found-icon { background: rgba(99,102,241,0.12); }
+.activity-icon.lost-icon { background: rgba(245,158,11,0.12); }
+.activity-text { flex: 1; min-width: 0; }
+.activity-main { font-size: 13px; font-weight: 600; color: var(--text-1); margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.activity-sub { font-size: 12px; color: var(--text-2); }
+.activity-time { font-size: 11px; color: var(--text-3); flex-shrink: 0; }
+.activity-tag { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; flex-shrink: 0; }
+.tag-match { background: rgba(16,185,129,0.15); color: #34D399; }
+.tag-found { background: rgba(99,102,241,0.15); color: #A5B4FC; }
+.tag-lost { background: rgba(245,158,11,0.15); color: #FCD34D; }
+
+.cta-section {
+  margin: 0 24px 60px; max-width: 480px; margin-left: auto; margin-right: auto;
+  background: var(--indigo); border-radius: var(--radius); padding: 36px 28px;
+  text-align: center; position: relative; overflow: hidden;
+}
+.cta-section::before {
+  content: ''; position: absolute; top: -60px; right: -60px;
+  width: 200px; height: 200px;
+  background: radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 70%);
+  pointer-events: none;
+}
+.cta-title { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 8px; color: #fff; }
+.cta-sub { font-size: 14px; color: rgba(255,255,255,0.7); margin-bottom: 24px; line-height: 1.5; }
+.cta-btns { display: flex; flex-direction: column; gap: 10px; }
+
+.btn-white {
+  width: 100%; padding: 14px; background: #fff; color: var(--indigo-dim);
+  font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 700;
+  border: none; border-radius: 10px; cursor: pointer; letter-spacing: -0.2px;
+  text-decoration: none; display: block;
+}
+.btn-outline-white {
+  width: 100%; padding: 14px; background: transparent; color: #fff;
+  font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 600;
+  border: 1.5px solid rgba(255,255,255,0.4); border-radius: 10px;
+  cursor: pointer; text-decoration: none; display: block;
+}
+
+footer {
+  border-top: 1px solid var(--ink-edge); padding: 28px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+  max-width: 480px; margin: 0 auto;
+}
+.footer-logo { font-size: 16px; font-weight: 800; letter-spacing: -0.4px; color: var(--text-2); }
+.footer-logo span { color: var(--indigo); }
+.footer-note { font-size: 12px; color: var(--text-3); text-align: right; line-height: 1.5; }
+.divider { height: 1px; background: var(--ink-edge); max-width: 480px; margin: 0 auto; }
+
+/* ── FLOW PAGES ── */
+.flow-page { max-width: 480px; margin: 0 auto; padding: 24px 20px 60px; }
+.flow-header { margin-bottom: 24px; }
+.flow-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: var(--indigo); margin-bottom: 8px; }
+.flow-title { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.2; color: var(--text-1); }
+.flow-title span { color: #A5B4FC; }
+.flow-subtitle { margin-top: 8px; font-size: 14px; color: var(--text-2); line-height: 1.6; }
+
+.steps-indicator { display: flex; align-items: center; gap: 0; margin-bottom: 28px; }
+.step-ind { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--text-3); white-space: nowrap; }
+.step-ind.active { color: #A5B4FC; }
+.step-ind.done { color: var(--emerald); }
+.step-num {
+  width: 22px; height: 22px; border-radius: 50%; background: var(--ink-edge);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; flex-shrink: 0;
+}
+.step-ind.active .step-num { background: var(--indigo); color: #fff; }
+.step-ind.done .step-num { background: var(--emerald); color: #fff; }
+.step-line { flex: 1; height: 1px; background: var(--ink-edge); margin: 0 8px; min-width: 12px; }
+
+/* Upload */
+.upload-zone {
+  border: 2px dashed var(--ink-edge); border-radius: var(--radius);
+  padding: 40px 24px; text-align: center; background: var(--ink-mid);
+  cursor: pointer; transition: border-color 0.2s, background 0.2s; margin-bottom: 16px;
+}
+.upload-zone:hover { border-color: var(--indigo); background: rgba(99,102,241,0.05); }
+.upload-zone input { display: none; }
+.upload-icon {
+  width: 52px; height: 52px; background: rgba(99,102,241,0.15);
+  border-radius: 14px; display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 14px;
+}
+.upload-icon svg { width: 26px; height: 26px; color: var(--indigo); }
+.upload-label { font-size: 15px; font-weight: 600; color: var(--text-1); margin-bottom: 4px; }
+.upload-sub { font-size: 13px; color: var(--text-2); }
+
+.skip-link {
+  display: block; text-align: center; font-size: 13px; color: var(--text-2);
+  margin-bottom: 16px; cursor: pointer; background: none; border: none;
+  font-family: inherit; text-decoration: underline;
+}
+.skip-link:hover { color: var(--text-1); }
+
+/* Preview */
+.preview-card {
+  background: var(--card-white); border-radius: var(--radius);
+  overflow: hidden; border: 1.5px solid var(--card-border); margin-bottom: 16px;
+}
+.preview-img-wrap {
+  position: relative; background: #F1F5F9; height: 220px;
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+}
+.preview-img-wrap img { width: 100%; height: 100%; object-fit: cover; }
+
+.backpack-art { position: relative; width: 120px; height: 150px; }
+.bp-body { position: absolute; bottom: 0; left: 10px; width: 100px; height: 120px; background: #1a1a2e; border-radius: 14px 14px 12px 12px; }
+.bp-top { position: absolute; top: 0; left: 18px; width: 84px; height: 40px; background: #16213e; border-radius: 42px 42px 0 0; }
+.bp-strap-l { position: absolute; left: 18px; top: 30px; width: 16px; height: 80px; background: #0f3460; border-radius: 8px; }
+.bp-strap-r { position: absolute; right: 18px; top: 30px; width: 16px; height: 80px; background: #0f3460; border-radius: 8px; }
+.bp-zipper { position: absolute; bottom: 38px; left: 10px; width: 100px; height: 4px; background: #E11D48; border-radius: 2px; }
+.bp-zipper-pull { position: absolute; bottom: 32px; right: 28px; width: 8px; height: 10px; background: #FB7185; border-radius: 3px; }
+.bp-pocket { position: absolute; bottom: 18px; left: 22px; width: 76px; height: 50px; background: #16213e; border-radius: 8px; border: 2px solid #0f3460; }
+.bp-pocket-zipper { position: absolute; bottom: 50px; left: 22px; width: 76px; height: 3px; background: #E11D48; border-radius: 2px; }
+
+.img-badge {
+  position: absolute; top: 12px; right: 12px;
+  background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.4);
+  color: #059669; font-size: 11px; font-weight: 600;
+  padding: 4px 10px; border-radius: 999px; display: flex; align-items: center; gap: 4px;
+}
+.img-badge::before { content: ''; width: 6px; height: 6px; background: var(--emerald); border-radius: 50%; display: inline-block; }
+
+/* Category prediction */
+.category-loading {
+  text-align: center; padding: 48px 24px;
+  background: var(--ink-mid); border: 1px solid var(--ink-edge);
+  border-radius: var(--radius); margin-bottom: 16px;
+}
+.spinner {
+  width: 36px; height: 36px; border: 3px solid var(--ink-edge);
+  border-top-color: var(--indigo); border-radius: 50%;
+  margin: 0 auto 16px; animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.category-loading-text { font-size: 14px; font-weight: 500; color: var(--text-2); }
+
+.category-card {
+  background: var(--card-white); border: 1.5px solid var(--card-border);
+  border-radius: var(--radius); padding: 20px; margin-bottom: 16px;
+}
+.category-card-title { font-size: 14px; font-weight: 700; color: #1E293B; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+.category-pills { display: flex; flex-direction: column; gap: 8px; }
+.category-pill {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px; border-radius: var(--radius-sm);
+  border: 1.5px solid var(--card-border); background: #F8FAFC;
+  cursor: pointer; font-size: 14px; font-weight: 500; color: #374151;
+  transition: all 0.15s; font-family: inherit; text-align: left; width: 100%;
+}
+.category-pill:hover { border-color: var(--indigo); }
+.category-pill.selected { background: var(--indigo); border-color: var(--indigo); color: #fff; }
+.category-pill .pill-emoji { font-size: 18px; flex-shrink: 0; }
+.category-pill .pill-check { margin-left: auto; font-size: 14px; opacity: 0; }
+.category-pill.selected .pill-check { opacity: 1; }
+.category-hint { font-size: 12px; color: var(--text-2); text-align: center; margin-top: 10px; }
+
+/* Forms */
+.form-card {
+  background: var(--card-white); border: 1.5px solid var(--card-border);
+  border-radius: var(--radius); padding: 20px; margin-bottom: 16px;
+}
+.form-section-label { font-size: 12px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: #64748B; margin-bottom: 14px; }
+.field { margin-bottom: 14px; }
+.field:last-child { margin-bottom: 0; }
+.field label { display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 6px; }
+.field input[type="text"], .field textarea {
+  width: 100%; padding: 10px 14px; border: 1.5px solid var(--card-border);
+  border-radius: var(--radius-sm); font-family: 'Inter', sans-serif;
+  font-size: 14px; color: #1E293B; background: #F8FAFC; outline: none; transition: border-color 0.2s;
+}
+.field input:focus, .field textarea:focus { border-color: var(--indigo); background: #fff; }
+.field textarea { height: 90px; resize: none; line-height: 1.5; }
+.row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 400px) { .row-2 { grid-template-columns: 1fr; } }
+
+.locked-category {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(99,102,241,0.15); border: 1px solid rgba(99,102,241,0.3);
+  color: #A5B4FC; font-size: 13px; font-weight: 600;
+  padding: 6px 14px; border-radius: 999px; margin-bottom: 16px;
+}
+.locked-category .edit-btn {
+  background: none; border: none; cursor: pointer; color: var(--text-2);
+  font-size: 14px; padding: 0; line-height: 1;
+}
+.locked-category .edit-btn:hover { color: var(--text-1); }
+
+/* Buttons */
+.btn-primary {
+  width: 100%; padding: 15px; background: var(--indigo); color: #fff;
+  font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 700;
+  border: none; border-radius: 10px; cursor: pointer;
+  transition: background 0.2s; letter-spacing: -0.2px;
+}
+.btn-primary:hover:not(:disabled) { background: var(--indigo-dim); }
+.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.btn-emerald {
+  width: 100%; padding: 15px; background: var(--emerald); color: #fff;
+  font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 700;
+  border: none; border-radius: 10px; cursor: pointer;
+}
+.btn-emerald:hover { background: #059669; }
+
+.btn-secondary {
+  width: 100%; padding: 15px; background: var(--ink-mid); color: var(--text-1);
+  font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 700;
+  border: 1.5px solid var(--ink-edge); border-radius: 10px; cursor: pointer;
+}
+.btn-secondary:hover { border-color: var(--text-3); }
+
+.btn-text {
+  background: none; border: none; color: var(--indigo); font-family: inherit;
+  font-size: 14px; font-weight: 600; cursor: pointer; padding: 8px 0;
+  text-decoration: underline;
+}
+
+.error-banner {
+  background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3);
+  color: #FCA5A5; font-size: 13px; font-weight: 500;
+  padding: 12px 14px; border-radius: var(--radius-sm); margin-top: 12px;
+  display: none;
+}
+.error-banner.visible { display: block; }
+
+.bottom-note { text-align: center; font-size: 12px; color: var(--text-3); margin-top: 14px; line-height: 1.5; }
+
+/* Review summary */
+.review-card {
+  background: var(--card-white); border: 1.5px solid var(--card-border);
+  border-radius: var(--radius); overflow: hidden; margin-bottom: 16px;
+}
+.review-thumb {
+  height: 140px; background: #F1F5F9; display: flex;
+  align-items: center; justify-content: center; overflow: hidden;
+}
+.review-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.review-body { padding: 18px; }
+.review-row {
+  display: flex; padding: 10px 0; border-bottom: 1px solid var(--detail-border);
+  font-size: 13px;
+}
+.review-row:last-child { border-bottom: none; }
+.review-key { width: 110px; flex-shrink: 0; color: #94A3B8; font-weight: 500; }
+.review-val { color: #1E293B; font-weight: 600; flex: 1; }
+
+/* Success state */
+.success-state { text-align: center; padding: 48px 24px; }
+.success-check {
+  width: 72px; height: 72px; background: rgba(16,185,129,0.15);
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 24px; font-size: 36px;
+  animation: successPop 0.5s ease;
+}
+@keyframes successPop {
+  0% { transform: scale(0); opacity: 0; }
+  60% { transform: scale(1.15); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.success-title { font-size: 22px; font-weight: 800; color: var(--text-1); margin-bottom: 10px; letter-spacing: -0.4px; }
+.success-sub { font-size: 14px; color: var(--text-2); line-height: 1.6; margin-bottom: 28px; }
+
+/* ── MATCH RESULTS ── */
+.match-page { max-width: 480px; margin: 0 auto; padding: 24px 20px 60px; }
+
+.match-banner {
+  background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.25);
+  border-radius: var(--radius); padding: 20px; margin-bottom: 20px;
+}
+.match-banner-header { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.match-banner-dot {
+  width: 10px; height: 10px; background: var(--emerald); border-radius: 50%;
+  animation: blink 1.5s ease-in-out infinite; flex-shrink: 0;
+}
+.match-banner-title { font-size: 18px; font-weight: 800; color: #34D399; letter-spacing: -0.3px; }
+.match-banner-sub { font-size: 13px; color: var(--text-2); margin-bottom: 14px; line-height: 1.5; }
+
+.confidence-row { display: flex; align-items: center; gap: 10px; }
+.confidence-label { font-size: 12px; font-weight: 600; color: var(--text-2); white-space: nowrap; }
+.confidence-track { flex: 1; height: 6px; background: var(--ink-edge); border-radius: 999px; overflow: hidden; }
+.confidence-fill { height: 100%; border-radius: 999px; transition: width 0.6s ease; }
+.confidence-fill.emerald { background: var(--emerald); }
+.confidence-fill.amber { background: var(--amber); }
+.confidence-fill.red { background: var(--red); }
+.confidence-pct { font-size: 14px; font-weight: 700; color: var(--text-1); min-width: 36px; text-align: right; }
+
+.recap-card {
+  background: var(--ink-mid); border: 1px solid var(--ink-edge);
+  border-radius: var(--radius); padding: 16px; margin-bottom: 16px;
+  display: flex; gap: 14px; align-items: flex-start;
+}
+.recap-emoji { font-size: 32px; flex-shrink: 0; }
+.recap-body { flex: 1; min-width: 0; }
+.recap-name { font-size: 15px; font-weight: 700; color: var(--text-1); margin-bottom: 4px; }
+.recap-desc { font-size: 13px; color: var(--text-2); margin-bottom: 8px; line-height: 1.4; }
+.recap-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+.pill {
+  font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 999px;
+}
+.pill-lost { background: rgba(239,68,68,0.15); color: #FCA5A5; }
+.pill-category { background: rgba(99,102,241,0.15); color: #A5B4FC; }
+
+.best-match-card {
+  background: var(--card-white); border: 2px solid var(--emerald);
+  border-radius: var(--radius); overflow: hidden; margin-bottom: 16px;
+}
+.best-match-header {
+  padding: 14px 18px; border-bottom: 1px solid var(--detail-border);
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.best-match-label { font-size: 12px; font-weight: 600; color: #64748B; }
+.confidence-tag { font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
+.confidence-tag.strong { background: rgba(16,185,129,0.15); color: #059669; }
+.confidence-tag.possible { background: rgba(245,158,11,0.15); color: #D97706; }
+.confidence-tag.weak { background: rgba(239,68,68,0.15); color: #DC2626; }
+
+.match-img-area {
+  height: 200px; background: #F1F5F9; display: flex;
+  align-items: center; justify-content: center; overflow: hidden;
+}
+.match-img-area img { width: 100%; height: 100%; object-fit: cover; }
+
+.detail-rows { padding: 0 18px; }
+.detail-row {
+  display: flex; padding: 12px 0; border-bottom: 1px solid var(--detail-border);
+  font-size: 13px; align-items: flex-start;
+}
+.detail-row:last-child { border-bottom: none; }
+.detail-key { width: 110px; flex-shrink: 0; color: #94A3B8; font-weight: 500; }
+.detail-val { color: #1E293B; font-weight: 600; flex: 1; }
+.detail-val.emerald { color: #059669; }
+
+.similarity-section { padding: 16px 18px; border-top: 1px solid var(--detail-border); }
+.similarity-title { font-size: 12px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: #64748B; margin-bottom: 12px; }
+.score-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.score-row:last-child { margin-bottom: 0; }
+.score-label { font-size: 12px; color: #64748B; width: 140px; flex-shrink: 0; }
+.score-track { flex: 1; height: 5px; background: #E2E8F0; border-radius: 999px; overflow: hidden; }
+.score-fill { height: 100%; border-radius: 999px; }
+.score-fill.indigo { background: var(--indigo); }
+.score-fill.emerald { background: var(--emerald); }
+.score-fill.amber { background: var(--amber); }
+.score-fill.gray { background: #CBD5E1; }
+.score-val { font-size: 12px; font-weight: 700; color: #1E293B; min-width: 32px; text-align: right; }
+.score-val.na { color: #94A3B8; font-weight: 500; }
+
+.category-match-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 18px; border-top: 1px solid var(--detail-border);
+}
+.category-match-label { font-size: 13px; font-weight: 500; color: #64748B; }
+.cat-match-pill { font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
+.cat-match-pill.same { background: rgba(16,185,129,0.15); color: #059669; }
+.cat-match-pill.diff { background: rgba(245,158,11,0.15); color: #D97706; }
+
+.finder-strip {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 18px; background: #F8FAFC; border-top: 1px solid var(--detail-border);
+}
+.finder-avatar {
+  width: 38px; height: 38px; border-radius: 50%;
+  background: var(--indigo); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; flex-shrink: 0;
+}
+.finder-info { flex: 1; min-width: 0; }
+.finder-name { font-size: 13px; font-weight: 700; color: #1E293B; }
+.finder-verified { font-size: 11px; color: #64748B; }
+.btn-contact {
+  font-size: 12px; font-weight: 700; color: var(--indigo);
+  background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.25);
+  padding: 7px 14px; border-radius: 999px; cursor: pointer; font-family: inherit;
+  white-space: nowrap;
+}
+
+.action-btns { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+
+.candidate-card {
+  background: var(--ink-mid); border: 1px solid var(--ink-edge);
+  border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 8px;
+  display: flex; align-items: center; gap: 12px; cursor: pointer;
+  transition: border-color 0.2s;
+}
+.candidate-card:hover { border-color: var(--indigo); }
+.candidate-emoji { font-size: 24px; flex-shrink: 0; }
+.candidate-body { flex: 1; min-width: 0; }
+.candidate-name { font-size: 13px; font-weight: 600; color: var(--text-1); margin-bottom: 2px; }
+.candidate-loc { font-size: 12px; color: var(--text-2); }
+.candidate-score { font-size: 13px; font-weight: 700; color: var(--amber); flex-shrink: 0; }
+
+.candidates-title { font-size: 14px; font-weight: 700; color: var(--text-2); margin-bottom: 10px; letter-spacing: -0.2px; }
+
+.empty-state { text-align: center; padding: 40px 20px; }
+.empty-state .radar-wrap { position: relative; width: 200px; height: 200px; margin: 0 auto 24px; transform: none; top: auto; left: auto; }
+.empty-title { font-size: 20px; font-weight: 800; color: var(--text-1); margin-bottom: 10px; letter-spacing: -0.4px; }
+.empty-sub { font-size: 14px; color: var(--text-2); line-height: 1.6; margin-bottom: 20px; }
+
+.match-footer-note {
+  font-size: 11px; color: var(--text-3); text-align: center;
+  line-height: 1.5; margin-top: 20px; padding-top: 16px;
+  border-top: 1px solid var(--ink-edge);
+}
+
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════ VIEW 1: LANDING ═══ -->
+<div id="view-landing" class="view active">
+  <nav>
+    <div class="logo" onclick="showView('landing')">Find<span>It</span></div>
+    <div class="nav-right">
+      <a href="#how" class="nav-link">How it works</a>
+      <button class="nav-btn">Sign in</button>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <div class="radar-wrap">
+      <div class="radar-ring"></div>
+      <div class="radar-ring"></div>
+      <div class="radar-ring"></div>
+      <div class="radar-center"></div>
+    </div>
+    <div class="eyebrow"><span class="live-dot"></span>Active across campus · AI-powered matching</div>
+    <h1>Lost something<br>on <em>campus?</em></h1>
+    <p class="hero-sub">Report it. Someone finds it. AI matches them together — usually within the hour.</p>
+    <div class="fork">
+      <button class="fork-card lost" onclick="startLostFlow()">
+        <span class="fork-emoji">😟</span>
+        <div class="fork-title">I lost something</div>
+        <div class="fork-desc">Report your item and get notified when it's found.</div>
+        <div class="fork-arrow">→</div>
+      </button>
+      <button class="fork-card found" onclick="startFoundFlow()">
+        <span class="fork-emoji">🎒</span>
+        <div class="fork-title">I found something</div>
+        <div class="fork-desc">Upload a photo and help it get back to its owner.</div>
+        <div class="fork-arrow">→</div>
+      </button>
+    </div>
+    <div class="stats-strip">
+      <div class="stat"><div class="stat-num green">143</div><div class="stat-label">items returned</div></div>
+      <div class="stat"><div class="stat-num indigo">87%</div><div class="stat-label">match accuracy</div></div>
+      <div class="stat"><div class="stat-num amber">&lt;1h</div><div class="stat-label">avg match time</div></div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <section class="section" id="how">
+    <div class="section-eyebrow">How it works</div>
+    <div class="section-title">Three steps.<br>No desk visits.</div>
+    <div class="steps-list">
+      <div class="step-item">
+        <div class="step-icon s1">📸</div>
+        <div><div class="step-body-title">Someone uploads a photo</div><div class="step-body-desc">Finder snaps a photo of the item and reports where they found it — library, canteen, lecture hall, wherever.</div></div>
+      </div>
+      <div class="step-item">
+        <div class="step-icon s2">🧠</div>
+        <div><div class="step-body-title">AI compares it to lost reports</div><div class="step-body-desc">CLIP encodes the photo into a 512-dimension vector and instantly compares it against every active lost item report on campus.</div></div>
+      </div>
+      <div class="step-item">
+        <div class="step-icon s3">🔔</div>
+        <div><div class="step-body-title">Owner gets notified</div><div class="step-body-desc">When confidence is high enough, both people get pinged. The owner confirms and arranges pickup — no lost property office needed.</div></div>
+      </div>
+    </div>
+    <div class="embed-visual">
+      <div class="embed-label">Inside the AI — embedding space</div>
+      <div class="embed-canvas">
+        <svg class="embed-svg" viewBox="0 0 340 160" preserveAspectRatio="none">
+          <line x1="170" y1="80" x2="145" y2="55" stroke="#10B981" stroke-width="1.5" stroke-dasharray="60" stroke-dashoffset="60" opacity="0" style="animation: conn-line 0.6s ease 1.4s forwards"/>
+          <line x1="170" y1="80" x2="195" y2="105" stroke="#6366F1" stroke-width="1" stroke-dasharray="60" stroke-dashoffset="60" opacity="0" style="animation: conn-line 0.5s ease 1.6s forwards"/>
+        </svg>
+        <div class="dot" style="left:22%;top:30%;width:8px;height:8px;background:#21262D;border:1px solid #30363D;"></div>
+        <div class="dot" style="left:78%;top:25%;width:8px;height:8px;background:#21262D;border:1px solid #30363D;"></div>
+        <div class="dot" style="left:60%;top:72%;width:8px;height:8px;background:#21262D;border:1px solid #30363D;"></div>
+        <div class="dot" style="left:85%;top:58%;width:7px;height:7px;background:#21262D;border:1px solid #30363D;"></div>
+        <div class="dot" style="left:14%;top:68%;width:7px;height:7px;background:#21262D;border:1px solid #30363D;"></div>
+        <div class="dot" style="left:38%;top:82%;width:6px;height:6px;background:#21262D;border:1px solid #30363D;"></div>
+        <div class="dot match-dot" style="left:42%;top:34%;width:12px;height:12px;background:#10B981;"></div>
+        <div class="dot-label" style="left:42%;top:34%;color:#34D399;font-size:10px;">found photo</div>
+        <div class="dot" style="left:57%;top:65%;width:10px;height:10px;background:#6366F1;opacity:0.6;"></div>
+        <div class="dot-label" style="left:57%;top:65%;color:#A5B4FC;font-size:10px;">lost report</div>
+        <div class="dot query-dot" style="left:50%;top:50%;width:14px;height:14px;background:#6366F1;"></div>
+        <div class="dot-label" style="left:50%;top:50%;color:#818CF8;font-size:10px;font-weight:600;">your item</div>
+      </div>
+      <div class="embed-caption">Each item becomes a point in AI space. Close points = similar items. FindIt finds yours automatically.</div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <section class="activity-section">
+    <div class="activity-header">
+      <div class="activity-title">Recent activity</div>
+      <div class="live-badge"><span class="live-dot"></span>Live</div>
+    </div>
+    <div class="activity-feed">
+      <div class="activity-item"><div class="activity-icon match-icon">✅</div><div class="activity-text"><div class="activity-main">Black backpack matched — 87% confidence</div><div class="activity-sub">Main Library, Floor 2 · Owner notified</div></div><div class="activity-tag tag-match">Match</div></div>
+      <div class="activity-item"><div class="activity-icon found-icon">📱</div><div class="activity-text"><div class="activity-main">iPhone 15 reported found</div><div class="activity-sub">Engineering Building, Rm 204</div></div><div class="activity-time">4m ago</div></div>
+      <div class="activity-item"><div class="activity-icon lost-icon">🔑</div><div class="activity-text"><div class="activity-main">Keys with red lanyard — lost report</div><div class="activity-sub">Near Student Canteen</div></div><div class="activity-time">12m ago</div></div>
+      <div class="activity-item"><div class="activity-icon match-icon">✅</div><div class="activity-text"><div class="activity-main">Blue water bottle matched — 91% confidence</div><div class="activity-sub">PE Building · Returned to owner</div></div><div class="activity-tag tag-match">Match</div></div>
+      <div class="activity-item"><div class="activity-icon found-icon">👓</div><div class="activity-text"><div class="activity-main">Glasses case reported found</div><div class="activity-sub">College of Arts, Lobby</div></div><div class="activity-time">31m ago</div></div>
+      <div class="activity-item"><div class="activity-icon lost-icon">💻</div><div class="activity-text"><div class="activity-main">MacBook charger — lost report</div><div class="activity-sub">Computer Science Building</div></div><div class="activity-time">48m ago</div></div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <section style="padding: 48px 24px; max-width:480px; margin: 0 auto;">
+    <div class="cta-section">
+      <div class="cta-title">Start here — it takes 60 seconds</div>
+      <div class="cta-sub">No account needed. Just a photo or a description and we do the rest.</div>
+      <div class="cta-btns">
+        <button class="btn-white" onclick="startLostFlow()">I lost something →</button>
+        <button class="btn-outline-white" onclick="startFoundFlow()">I found something</button>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="footer-logo">Find<span>It</span></div>
+    <div class="footer-note">AI-powered campus lost &amp; found<br>Built with CLIP · ViT-B/32</div>
+  </footer>
+</div>
+
+<!-- ═══════════════════════════════════════════ VIEW 2: LOST FLOW ═══ -->
+<div id="view-lost" class="view">
+  <nav>
+    <div class="logo" onclick="showView('landing')">Find<span>It</span></div>
+    <div class="nav-right"><button class="nav-btn">Sign in</button></div>
+  </nav>
+  <div class="flow-page" id="lost-flow-container"></div>
+</div>
+
+<!-- ═══════════════════════════════════════════ VIEW 3: FOUND FLOW ══ -->
+<div id="view-found" class="view">
+  <nav>
+    <div class="logo" onclick="showView('landing')">Find<span>It</span></div>
+    <div class="nav-right"><button class="nav-btn">Sign in</button></div>
+  </nav>
+  <div class="flow-page" id="found-flow-container"></div>
+</div>
+
+<!-- ═══════════════════════════════════════════ VIEW 4: MATCH RESULTS ═ -->
+<div id="view-match" class="view">
+  <nav>
+    <div class="logo" onclick="showView('landing')">Find<span>It</span></div>
+    <div class="nav-right"><button class="nav-btn">Sign in</button></div>
+  </nav>
+  <div class="match-page" id="match-container"></div>
+</div>
+
+<script>
+const API_BASE = 'http://localhost:8000';
+
+const CATEGORIES = [
+  { name: 'Backpack / Bag', emoji: '🎒' },
+  { name: 'Electronics', emoji: '📱' },
+  { name: 'Wallet / Purse', emoji: '👛' },
+  { name: 'Keys', emoji: '🔑' },
+  { name: 'Umbrella', emoji: '☂️' },
+  { name: 'Glasses', emoji: '👓' },
+  { name: 'Water Bottle', emoji: '💧' },
+  { name: 'Clothing', emoji: '👕' },
+  { name: 'Other', emoji: '📦' }
+];
+
+let currentFlow = 'lost';
+
+const state = {
+  lost: { step: 'photo', imageFile: null, imagePreview: null, category: null, description: '', location: '', dateLost: '', email: '', predictionScores: null },
+  found: { step: 'photo', imageFile: null, imagePreview: null, category: null, description: '', location: '', dateFound: '', email: '', predictionScores: null },
+  match: { response: null, lostForm: null, expandAll: false, selectedIndex: 0 }
+};
+
+function getCategoryEmoji(name) {
+  const cat = CATEGORIES.find(c => c.name === name);
+  return cat ? cat.emoji : '📦';
+}
+
+function showView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  const map = { landing: 'view-landing', lost: 'view-lost', found: 'view-found', match: 'view-match' };
+  const el = document.getElementById(map[name]);
+  if (el) { el.classList.remove('active'); void el.offsetWidth; el.classList.add('active'); }
+  window.scrollTo(0, 0);
+}
+
+function backpackArtHTML() {
+  return `<div class="backpack-art">
+    <div class="bp-top"></div><div class="bp-strap-l"></div><div class="bp-strap-r"></div>
+    <div class="bp-body"></div><div class="bp-pocket"></div>
+    <div class="bp-zipper"></div><div class="bp-zipper-pull"></div><div class="bp-pocket-zipper"></div>
+  </div>`;
+}
+
+function renderStepsIndicator(steps, current) {
+  return `<div class="steps-indicator">${steps.map((s, i) => {
+    const cls = i < current ? 'done' : i === current ? 'active' : '';
+    const num = i < current ? '✓' : (i + 1);
+    const line = i < steps.length - 1 ? '<div class="step-line"></div>' : '';
+    return `<div class="step-ind ${cls}"><div class="step-num">${num}</div>${s}</div>${line}`;
+  }).join('')}</div>`;
+}
+
+function renderCategoryPills(selected, scores) {
+  const sorted = scores
+    ? [...CATEGORIES].sort((a, b) => (scores[b.name] || 0) - (scores[a.name] || 0))
+    : CATEGORIES;
+  return sorted.map(c => {
+    const sel = c.name === selected ? 'selected' : '';
+    const check = c.name === selected ? '✓' : '';
+    return `<button type="button" class="category-pill ${sel}" data-cat="${c.name}" onclick="selectCategory('${c.name.replace(/'/g, "\\'")}')">
+      <span class="pill-emoji">${c.emoji}</span><span>${c.name}</span><span class="pill-check">${check}</span>
+    </button>`;
+  }).join('');
+}
+
+function selectCategory(name) {
+  state[currentFlow].category = name;
+  document.querySelectorAll('.category-pill').forEach(p => {
+    const isSel = p.dataset.cat === name;
+    p.classList.toggle('selected', isSel);
+    p.querySelector('.pill-check').textContent = isSel ? '✓' : '';
+  });
+}
+
+/* ── LOST FLOW ── */
+function startLostFlow() {
+  currentFlow = 'lost';
+  state.lost = { step: 'photo', imageFile: null, imagePreview: null, category: null, description: '', location: '', dateLost: '', email: '', predictionScores: null };
+  renderLostStep();
+  showView('lost');
+}
+
+function renderLostStep() {
+  const s = state.lost;
+  const container = document.getElementById('lost-flow-container');
+  let html = '';
+
+  if (s.step === 'photo') {
+    html = `
+      <button class="back-link" onclick="showView('landing')">← Back</button>
+      <div class="flow-header">
+        <div class="flow-eyebrow">Lost something?</div>
+        <div class="flow-title">Report a <span>lost item</span></div>
+        <p class="flow-subtitle">Upload a photo and we'll search every found item on campus for a match.</p>
+      </div>
+      ${renderStepsIndicator(['Photo', 'Details', 'Submit'], 0)}
+      <div class="upload-zone" onclick="document.getElementById('lost-file-input').click()">
+        <input type="file" id="lost-file-input" accept="image/*" onchange="handleLostUpload(event)"/>
+        <div class="upload-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
+        <div class="upload-label">Upload a photo of your item</div>
+        <div class="upload-sub">optional but improves match accuracy</div>
+      </div>
+      ${s.imagePreview ? `
+        <div class="preview-card">
+          <div class="preview-img-wrap"><img src="${s.imagePreview}" alt="Preview"/><div class="img-badge">Photo uploaded</div></div>
+        </div>
+      ` : `
+        <button class="skip-link" onclick="lostSkipPhoto()">Skip photo — select category manually</button>
+      `}`;
+  } else if (s.step === 'category') {
+    html = `
+      <button class="back-link" onclick="lostBackToPhoto()">← Back</button>
+      <div class="flow-header">
+        <div class="flow-eyebrow">Lost something?</div>
+        <div class="flow-title">What did you <span>lose?</span></div>
+      </div>
+      ${renderStepsIndicator(['Photo', 'Details', 'Submit'], 0)}
+      <div id="lost-category-content">
+        ${s.predictionLoading ? `
+          <div class="category-loading"><div class="spinner"></div><div class="category-loading-text">Analysing your item…</div></div>
+        ` : `
+          <div class="category-card">
+            <div class="category-card-title">🧠 AI predicted category</div>
+            <div class="category-pills">${renderCategoryPills(s.category, s.predictionScores)}</div>
+            <div class="category-hint">Tap to change if this looks wrong</div>
+          </div>
+          <button class="btn-primary" onclick="lostProceedToDetails()" ${!s.category ? 'disabled' : ''}>Looks right, continue →</button>
+        `}
+      </div>`;
+  } else if (s.step === 'details') {
+    html = `
+      <button class="back-link" onclick="lostBackToCategory()">← Back</button>
+      <div class="flow-header">
+        <div class="flow-eyebrow">Lost something?</div>
+        <div class="flow-title">Item <span>details</span></div>
+      </div>
+      ${renderStepsIndicator(['Photo', 'Details', 'Submit'], 1)}
+      <div class="locked-category">
+        <span>${getCategoryEmoji(s.category)} ${s.category}</span>
+        <button class="edit-btn" onclick="lostBackToCategory()" title="Edit category">✏️</button>
+      </div>
+      <div class="form-card">
+        <div class="form-section-label">Tell us more</div>
+        <div class="field"><label>Description</label><textarea id="lost-desc" placeholder="e.g. Black backpack with red zipper…">${s.description}</textarea></div>
+        <div class="field"><label>Where lost</label><input type="text" id="lost-location" placeholder="e.g. Main Library, Floor 2" value="${s.location}"/></div>
+        <div class="row-2">
+          <div class="field"><label>Date lost</label><input type="text" id="lost-date" placeholder="e.g. June 10, 2026" value="${s.dateLost}"/></div>
+          <div class="field"><label>Your email</label><input type="text" id="lost-email" placeholder="you@university.edu" value="${s.email}"/></div>
+        </div>
+      </div>
+      <button class="btn-primary" onclick="lostProceedToReview()">Next →</button>`;
+  } else if (s.step === 'review') {
+    html = `
+      <button class="back-link" onclick="lostBackToDetails()">← Back</button>
+      <div class="flow-header">
+        <div class="flow-eyebrow">Almost done</div>
+        <div class="flow-title">Review &amp; <span>submit</span></div>
+      </div>
+      ${renderStepsIndicator(['Photo', 'Details', 'Submit'], 2)}
+      <div class="review-card">
+        ${s.imagePreview ? `<div class="review-thumb"><img src="${s.imagePreview}" alt="Your item"/></div>` : ''}
+        <div class="review-body">
+          <div class="review-row"><div class="review-key">Category</div><div class="review-val">${getCategoryEmoji(s.category)} ${s.category}</div></div>
+          <div class="review-row"><div class="review-key">Description</div><div class="review-val">${s.description || '—'}</div></div>
+          <div class="review-row"><div class="review-key">Where lost</div><div class="review-val">${s.location || '—'}</div></div>
+          <div class="review-row"><div class="review-key">Date lost</div><div class="review-val">${s.dateLost || '—'}</div></div>
+          <div class="review-row"><div class="review-key">Email</div><div class="review-val">${s.email || '—'}</div></div>
+        </div>
+      </div>
+      <button class="btn-primary" id="lost-submit-btn" onclick="submitLostReport()">Submit lost report →</button>
+      <div class="error-banner" id="lost-error">Something went wrong. Please try again.</div>`;
+  }
+  container.innerHTML = html;
+}
+
+function handleLostUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (state.lost.imagePreview) URL.revokeObjectURL(state.lost.imagePreview);
+  state.lost.imageFile = file;
+  state.lost.imagePreview = URL.createObjectURL(file);
+  state.lost.step = 'category';
+  state.lost.predictionLoading = true;
+  renderLostStep();
+  predictCategory('lost');
+}
+
+function lostProceedToCategory() {
+  state.lost.step = 'category';
+  state.lost.predictionLoading = true;
+  renderLostStep();
+  predictCategory('lost');
+}
+
+function lostSkipPhoto() {
+  currentFlow = 'lost';
+  state.lost.step = 'category';
+  state.lost.predictionLoading = false;
+  state.lost.category = null;
+  state.lost.predictionScores = null;
+  renderLostStep();
+}
+
+function lostBackToPhoto() { state.lost.step = 'photo'; renderLostStep(); }
+function lostBackToCategory() { state.lost.step = 'category'; state.lost.predictionLoading = false; renderLostStep(); }
+function lostBackToDetails() { state.lost.step = 'details'; renderLostStep(); }
+
+function lostProceedToDetails() {
+  if (!state.lost.category) return;
+  state.lost.step = 'details';
+  renderLostStep();
+}
+
+function lostProceedToReview() {
+  state.lost.description = document.getElementById('lost-desc').value.trim();
+  state.lost.location = document.getElementById('lost-location').value.trim();
+  state.lost.dateLost = document.getElementById('lost-date').value.trim();
+  state.lost.email = document.getElementById('lost-email').value.trim();
+  if (!state.lost.description) { alert('Please enter a description.'); return; }
+  state.lost.step = 'review';
+  renderLostStep();
+}
+
+async function predictCategory(flow) {
+  const s = state[flow];
+  if (!s.imageFile) { s.predictionLoading = false; renderLostStep(); return; }
+  try {
+    const fd = new FormData();
+    fd.append('image', s.imageFile);
+    const res = await fetch(`${API_BASE}/predict-category`, { method: 'POST', body: fd });
+    if (!res.ok) throw new Error('Prediction failed');
+    const data = await res.json();
+    s.category = data.predicted;
+    s.predictionScores = data.all_scores;
+    s.predictionLoading = false;
+  } catch {
+    s.predictionLoading = false;
+    s.category = s.category || 'Other';
+    s.predictionScores = null;
+  }
+  if (flow === 'lost') renderLostStep();
+  else renderFoundStep();
+}
+
+async function submitLostReport(expandAll) {
+  const btn = document.getElementById('lost-submit-btn');
+  const errEl = document.getElementById('lost-error');
+  if (btn) { btn.disabled = true; btn.textContent = 'Searching for matches…'; }
+  if (errEl) errEl.classList.remove('visible');
+
+  const s = state.lost;
+  const fd = new FormData();
+  if (s.imageFile) fd.append('image', s.imageFile);
+  fd.append('description', s.description);
+  fd.append('category', expandAll ? 'All' : s.category);
+  if (s.location) fd.append('location', s.location);
+  if (s.dateLost) fd.append('date_lost', s.dateLost);
+  if (s.email) fd.append('email', s.email);
+
+  try {
+    const res = await fetch(`${API_BASE}/lost`, { method: 'POST', body: fd });
+    if (!res.ok) throw new Error('Submit failed');
+    const data = await res.json();
+    state.match.response = data;
+    state.match.lostForm = { ...s };
+    state.match.expandAll = !!expandAll;
+    state.match.selectedIndex = 0;
+    renderMatchView();
+    showView('match');
+  } catch {
+    if (expandAll) {
+      renderMatchView();
+      const container = document.getElementById('match-container');
+      container.insertAdjacentHTML('beforeend', '<div class="error-banner visible" style="display:block;margin-top:16px">Something went wrong. Please try again.</div>');
+    } else {
+      if (btn) { btn.disabled = false; btn.textContent = 'Submit lost report →'; }
+      if (errEl) errEl.classList.add('visible');
+    }
+  }
+}
+
+/* ── FOUND FLOW ── */
+function startFoundFlow() {
+  currentFlow = 'found';
+  const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  state.found = { step: 'photo', imageFile: null, imagePreview: null, category: null, description: '', location: '', dateFound: today, email: '', predictionScores: null };
+  renderFoundStep();
+  showView('found');
+}
+
+function renderFoundStep() {
+  const s = state.found;
+  const container = document.getElementById('found-flow-container');
+  let html = '';
+
+  if (s.step === 'photo') {
+    html = `
+      <button class="back-link" onclick="showView('landing')">← Back</button>
+      <div class="flow-header">
+        <div class="flow-eyebrow">Found something?</div>
+        <div class="flow-title">Report a <span>found item</span></div>
+        <p class="flow-subtitle">Upload a photo and we'll automatically match it with people who reported it missing.</p>
+      </div>
+      <div class="upload-zone" onclick="document.getElementById('found-file-input').click()">
+        <input type="file" id="found-file-input" accept="image/*" onchange="handleFoundUpload(event)"/>
+        <div class="upload-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
+        <div class="upload-label">Upload a photo of the found item</div>
+        <div class="upload-sub">required — photo powers the AI matching</div>
+      </div>
+      ${s.imagePreview ? `
+        <div class="preview-card">
+          <div class="preview-img-wrap"><img src="${s.imagePreview}" alt="Preview"/><div class="img-badge">Photo uploaded</div></div>
+        </div>
+      ` : ''}`;
+  } else if (s.step === 'category') {
+    html = `
+      <button class="back-link" onclick="foundBackToPhoto()">← Back</button>
+      <div class="flow-header">
+        <div class="flow-eyebrow">Found something?</div>
+        <div class="flow-title">What did you <span>find?</span></div>
+      </div>
+      ${s.predictionLoading ? `
+        <div class="category-loading"><div class="spinner"></div><div class="category-loading-text">Analysing your item…</div></div>
+      ` : `
+        <div class="category-card">
+          <div class="category-card-title">🧠 AI predicted category</div>
+          <div class="category-pills">${renderCategoryPills(s.category, s.predictionScores)}</div>
+          <div class="category-hint">Tap to change if this looks wrong</div>
+        </div>
+        <button class="btn-primary" onclick="foundProceedToDetails()" ${!s.category ? 'disabled' : ''}>Looks right, continue →</button>
+      `}`;
+  } else if (s.step === 'details') {
+    html = `
+      <button class="back-link" onclick="foundBackToCategory()">← Back</button>
+      <div class="flow-header">
+        <div class="flow-eyebrow">Found something?</div>
+        <div class="flow-title">Item <span>details</span></div>
+      </div>
+      <div class="locked-category">
+        <span>${getCategoryEmoji(s.category)} ${s.category}</span>
+        <button class="edit-btn" onclick="foundBackToCategory()" title="Edit category">✏️</button>
+      </div>
+      <div class="form-card">
+        <div class="form-section-label">Item details</div>
+        <div class="field"><label>Description <span style="color:#94A3B8;font-weight:400">(optional)</span></label><textarea id="found-desc" placeholder="e.g. Black backpack with red zipper…">${s.description}</textarea></div>
+        <div class="row-2">
+          <div class="field"><label>Where found</label><input type="text" id="found-location" placeholder="e.g. Main Library, Floor 2" value="${s.location}"/></div>
+          <div class="field"><label>Date found</label><input type="text" id="found-date" value="${s.dateFound}"/></div>
+        </div>
+      </div>
+      <div class="form-card">
+        <div class="form-section-label">Your contact</div>
+        <div class="field"><label>Your email</label><input type="text" id="found-email" placeholder="finder@university.edu" value="${s.email}"/></div>
+      </div>
+      <button class="btn-primary" id="found-submit-btn" onclick="submitFoundReport()">Submit found item →</button>
+      <div class="error-banner" id="found-error">Something went wrong. Please try again.</div>
+      <p class="bottom-note">Your photo is processed locally. We never share your contact without consent.</p>`;
+  } else if (s.step === 'success') {
+    html = `
+      <div class="success-state">
+        <div class="success-check">✓</div>
+        <div class="success-title">Your report is live.</div>
+        <div class="success-sub">We'll notify you by email if we find the owner.</div>
+        <button class="btn-primary" onclick="showView('landing')">Report another item</button>
+      </div>`;
+  }
+  container.innerHTML = html;
+}
+
+function handleFoundUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (state.found.imagePreview) URL.revokeObjectURL(state.found.imagePreview);
+  state.found.imageFile = file;
+  state.found.imagePreview = URL.createObjectURL(file);
+  state.found.step = 'category';
+  state.found.predictionLoading = true;
+  renderFoundStep();
+  predictCategory('found');
+}
+
+function foundBackToPhoto() { state.found.step = 'photo'; renderFoundStep(); }
+function foundBackToCategory() { state.found.step = 'category'; state.found.predictionLoading = false; renderFoundStep(); }
+
+function foundProceedToDetails() {
+  if (!state.found.category) return;
+  state.found.step = 'details';
+  renderFoundStep();
+}
+
+async function submitFoundReport() {
+  const btn = document.getElementById('found-submit-btn');
+  const errEl = document.getElementById('found-error');
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+  errEl.classList.remove('visible');
+
+  const s = state.found;
+  s.description = document.getElementById('found-desc').value.trim();
+  s.location = document.getElementById('found-location').value.trim();
+  s.dateFound = document.getElementById('found-date').value.trim();
+  s.email = document.getElementById('found-email').value.trim();
+
+  const fd = new FormData();
+  fd.append('image', s.imageFile);
+  if (s.description) fd.append('description', s.description);
+  fd.append('category', s.category);
+  if (s.location) fd.append('location', s.location);
+  if (s.dateFound) fd.append('date_found', s.dateFound);
+  if (s.email) fd.append('finder_email', s.email);
+
+  try {
+    const res = await fetch(`${API_BASE}/found`, { method: 'POST', body: fd });
+    if (!res.ok) throw new Error('Submit failed');
+    s.step = 'success';
+    renderFoundStep();
+  } catch {
+    btn.disabled = false;
+    btn.textContent = 'Submit found item →';
+    errEl.classList.add('visible');
+  }
+}
+
+/* ── MATCH RESULTS ── */
+function getConfidenceLabel(score) {
+  if (score >= 0.85) return { text: 'Strong match', cls: 'strong', color: 'emerald' };
+  if (score >= 0.70) return { text: 'Possible match', cls: 'possible', color: 'amber' };
+  if (score >= 0.60) return { text: 'Weak match', cls: 'weak', color: 'red' };
+  return null;
+}
+
+function filterMatches(matches) {
+  return (matches || []).filter(m => m.score >= 0.60);
+}
+
+function renderMatchView() {
+  const { response, lostForm, selectedIndex } = state.match;
+  const container = document.getElementById('match-container');
+  const matches = filterMatches(response.matches);
+  const category = response.category_searched || lostForm.category;
+  const totalCompared = response.total_compared || 0;
+  const breakdown = response.scores_breakdown || {};
+
+  if (matches.length === 0) {
+    container.innerHTML = `
+      <button class="back-link" onclick="showView('landing')">← Back</button>
+      <div class="empty-state">
+        <div class="radar-wrap" style="position:relative;width:200px;height:200px;margin:0 auto 24px;transform:none;">
+          <div class="radar-ring"></div><div class="radar-ring"></div><div class="radar-ring"></div>
+          <div class="radar-center"></div>
+        </div>
+        <div class="empty-title">No matches found in ${category}</div>
+        <div class="empty-sub">We searched ${totalCompared} found items. We'll notify you by email when something comes in.</div>
+        ${!state.match.expandAll ? `<button class="btn-text" onclick="expandSearch()">Expand search to all categories</button>` : ''}
+      </div>
+      <div class="match-footer-note">Searched ${totalCompared} reports in category: ${category} · Ranked by combined CLIP similarity</div>`;
+    return;
+  }
+
+  const top = matches[selectedIndex] || matches[0];
+  const conf = getConfidenceLabel(top.score);
+  const pct = Math.round(top.score * 100);
+  const fillColor = conf ? conf.color : 'emerald';
+  const others = matches.filter((_, i) => i !== selectedIndex);
+
+  const imgSrc = top.image_url ? `${API_BASE}${top.image_url}` : null;
+  const initials = (top.reported_by || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  const sameCategory = top.category === lostForm.category;
+
+  function scoreRow(label, value, colorClass) {
+    const isNull = value == null;
+    const pctW = isNull ? 0 : Math.round(value * 100);
+    return `<div class="score-row">
+      <div class="score-label">${label}</div>
+      <div class="score-track"><div class="score-fill ${isNull ? 'gray' : colorClass}" style="width:${pctW}%"></div></div>
+      <div class="score-val ${isNull ? 'na' : ''}">${isNull ? 'n/a' : value.toFixed(2)}</div>
+    </div>`;
+  }
+
+  container.innerHTML = `
+    <button class="back-link" onclick="showView('landing')">← Back</button>
+
+    <div class="match-banner">
+      <div class="match-banner-header">
+        <div class="match-banner-dot"></div>
+        <div class="match-banner-title">Possible match found!</div>
+      </div>
+      <div class="match-banner-sub">Searched ${totalCompared} found items in the category: ${category}</div>
+      <div class="confidence-row">
+        <div class="confidence-label">Match confidence</div>
+        <div class="confidence-track"><div class="confidence-fill ${fillColor}" style="width:${pct}%"></div></div>
+        <div class="confidence-pct">${pct}%</div>
+      </div>
+    </div>
+
+    <div class="recap-card">
+      <div class="recap-emoji">${getCategoryEmoji(lostForm.category)}</div>
+      <div class="recap-body">
+        <div class="recap-name">${lostForm.category}</div>
+        <div class="recap-desc">${lostForm.description}</div>
+        <div class="recap-pills">
+          <span class="pill pill-lost">Lost</span>
+          <span class="pill pill-category">${lostForm.category}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="best-match-card">
+      <div class="best-match-header">
+        <div class="best-match-label">Top result · ${selectedIndex + 1} of ${matches.length} candidates</div>
+        ${conf ? `<span class="confidence-tag ${conf.cls}">${conf.text}</span>` : ''}
+      </div>
+      <div class="match-img-area">
+        ${imgSrc ? `<img src="${imgSrc}" alt="Found item"/>` : backpackArtHTML()}
+      </div>
+      <div class="detail-rows">
+        <div class="detail-row"><div class="detail-key">Category</div><div class="detail-val">${getCategoryEmoji(top.category)} ${top.category}</div></div>
+        <div class="detail-row"><div class="detail-key">Description</div><div class="detail-val">${top.description || '—'}</div></div>
+        <div class="detail-row"><div class="detail-key">Found at</div><div class="detail-val emerald">${top.location || '—'}</div></div>
+        <div class="detail-row"><div class="detail-key">Date found</div><div class="detail-val">${top.date_found || '—'}</div></div>
+        <div class="detail-row"><div class="detail-key">Time found</div><div class="detail-val">${top.time_found || '—'}</div></div>
+        <div class="detail-row"><div class="detail-key">Currently held at</div><div class="detail-val">Library Information Desk</div></div>
+        <div class="detail-row"><div class="detail-key">Reported by</div><div class="detail-val">${top.reported_by || '—'}</div></div>
+      </div>
+      <div class="similarity-section">
+        <div class="similarity-title">Similarity breakdown</div>
+        ${scoreRow('Text → image', breakdown.text_to_image, 'indigo')}
+        ${scoreRow('Image → image', breakdown.image_to_image, 'emerald')}
+        ${scoreRow('Found text → lost image', breakdown.found_text_to_lost_image, 'amber')}
+      </div>
+      <div class="category-match-row">
+        <div class="category-match-label">Category match</div>
+        <span class="cat-match-pill ${sameCategory ? 'same' : 'diff'}">${sameCategory ? '✓ Same category' : '⚠ Different category'}</span>
+      </div>
+      <div class="finder-strip">
+        <div class="finder-avatar">${initials}</div>
+        <div class="finder-info">
+          <div class="finder-name">${top.reported_by || 'Anonymous'}</div>
+          <div class="finder-verified">Verified user</div>
+        </div>
+        <button class="btn-contact">Contact</button>
+      </div>
+    </div>
+
+    <div class="action-btns">
+      <button class="btn-emerald">✓ This is mine</button>
+      <button class="btn-secondary" onclick="showView('landing')">Not my item</button>
+    </div>
+
+    ${others.length > 0 ? `
+      <div class="candidates-title">Other candidates</div>
+      ${others.map((m, idx) => {
+        const realIdx = matches.indexOf(m);
+        const mPct = Math.round(m.score * 100);
+        return `<div class="candidate-card" onclick="selectMatchCandidate(${realIdx})">
+          <div class="candidate-emoji">${getCategoryEmoji(m.category)}</div>
+          <div class="candidate-body">
+            <div class="candidate-name">${m.description || m.category}</div>
+            <div class="candidate-loc">${m.location || '—'}</div>
+          </div>
+          <span class="pill pill-category" style="font-size:10px;">${m.category}</span>
+          <div class="candidate-score">${mPct}%</div>
+        </div>`;
+      }).join('')}
+    ` : ''}
+
+    <div class="match-footer-note">Showing ${matches.length} of ${totalCompared} reports compared in category: ${category} · Ranked by combined CLIP similarity</div>`;
+}
+
+function selectMatchCandidate(index) {
+  state.match.selectedIndex = index;
+  renderMatchView();
+}
+
+async function expandSearch() {
+  const container = document.getElementById('match-container');
+  container.innerHTML = `<div class="category-loading" style="margin-top:40px"><div class="spinner"></div><div class="category-loading-text">Searching all categories…</div></div>`;
+  state.match.expandAll = true;
+  await submitLostReport(true);
+}
+</script>
+</body>
+</html>
