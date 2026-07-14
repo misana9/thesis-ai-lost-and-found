@@ -58,3 +58,4 @@ clip @ git+https://github.com/openai/CLIP.git
 pillow==11.2.1
 numpy==2.2.6
 pgvector==0.4.1
+pytest==8.3.5

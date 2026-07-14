@@ -658,6 +658,40 @@ footer {
 }
 
 .hidden { display: none !important; }
+
+.claim-success-banner {
+  background: rgba(16,185,129,0.12);
+  border: 1px solid rgba(16,185,129,0.3);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  margin-bottom: 16px;
+}
+.claim-success-title { font-size: 15px; font-weight: 700; color: #34D399; margin-bottom: 4px; }
+.claim-success-sub { font-size: 13px; color: var(--text-2); line-height: 1.5; }
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+.admin-column-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-2);
+  margin-bottom: 10px;
+  letter-spacing: -0.2px;
+}
+.admin-card {
+  background: var(--ink-mid);
+  border: 1px solid var(--ink-edge);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  margin-bottom: 8px;
+}
+.admin-card-title { font-size: 14px; font-weight: 700; color: var(--text-1); margin-bottom: 4px; }
+.admin-card-body { font-size: 13px; color: var(--text-2); margin-bottom: 6px; line-height: 1.4; }
+.admin-card-meta { font-size: 11px; color: var(--text-3); }
+.admin-empty { font-size: 13px; color: var(--text-3); padding: 8px 0; }
 </style>
 </head>
 <body>
@@ -668,6 +702,7 @@ footer {
     <div class="logo" id="nav-logo-landing">Find<span>It</span></div>
     <div class="nav-right">
       <a href="#how" class="nav-link">How it works</a>
+      <button class="nav-link" id="btn-open-admin" style="background:none;border:none;cursor:pointer;font-family:inherit;">Queue</button>
       <button class="nav-btn">Sign in</button>
     </div>
   </nav>
@@ -754,12 +789,6 @@ footer {
       <div class="live-badge"><span class="live-dot"></span>Live</div>
     </div>
     <div class="activity-feed">
-      <div class="activity-item"><div class="activity-icon match-icon">✅</div><div class="activity-text"><div class="activity-main">Black backpack matched — 87% confidence</div><div class="activity-sub">Main Library, Floor 2 · Owner notified</div></div><div class="activity-tag tag-match">Match</div></div>
-      <div class="activity-item"><div class="activity-icon found-icon">📱</div><div class="activity-text"><div class="activity-main">iPhone 15 reported found</div><div class="activity-sub">Engineering Building, Rm 204</div></div><div class="activity-time">4m ago</div></div>
-      <div class="activity-item"><div class="activity-icon lost-icon">🔑</div><div class="activity-text"><div class="activity-main">Keys with red lanyard — lost report</div><div class="activity-sub">Near Student Canteen</div></div><div class="activity-time">12m ago</div></div>
-      <div class="activity-item"><div class="activity-icon match-icon">✅</div><div class="activity-text"><div class="activity-main">Blue water bottle matched — 91% confidence</div><div class="activity-sub">PE Building · Returned to owner</div></div><div class="activity-tag tag-match">Match</div></div>
-      <div class="activity-item"><div class="activity-icon found-icon">👓</div><div class="activity-text"><div class="activity-main">Glasses case reported found</div><div class="activity-sub">College of Arts, Lobby</div></div><div class="activity-time">31m ago</div></div>
-      <div class="activity-item"><div class="activity-icon lost-icon">💻</div><div class="activity-text"><div class="activity-main">MacBook charger — lost report</div><div class="activity-sub">Computer Science Building</div></div><div class="activity-time">48m ago</div></div>
     </div>
   </section>
 
@@ -807,6 +836,15 @@ footer {
     <div class="nav-right"><button class="nav-btn">Sign in</button></div>
   </nav>
   <div class="match-page" id="match-container"></div>
+</div>
+
+<!-- ═══════════════════════════════════════ VIEW 5: ADMIN QUEUE ═══ -->
+<div id="view-admin" class="view">
+  <nav>
+    <div class="logo" id="nav-logo-admin">Find<span>It</span></div>
+    <div class="nav-right"><button class="nav-btn">Sign in</button></div>
+  </nav>
+  <div class="flow-page" id="admin-container"></div>
 </div>
 
 <script src="main.js"></script>

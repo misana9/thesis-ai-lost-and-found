@@ -50,8 +50,10 @@ const state = {
   match: {
     response: null,
     lostForm: null,
+    lostItemId: null,
     expandAll: false,
     selectedIndex: 0,
+    claimMessage: null,
   },
 };
 
@@ -63,7 +65,13 @@ function getCategoryEmoji(name) {
 
 function showView(name) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-  const ids = { landing: 'view-landing', lost: 'view-lost', found: 'view-found', match: 'view-match' };
+  const ids = {
+    landing: 'view-landing',
+    lost: 'view-lost',
+    found: 'view-found',
+    match: 'view-match',
+    admin: 'view-admin',
+  };
   const el = document.getElementById(ids[name]);
   if (!el) return;
   el.classList.remove('active');
@@ -541,6 +549,7 @@ async function submitLostReport(expandAll = false) {
   if (s.imageFile) fd.append('image', s.imageFile);
   fd.append('description', s.description);
   fd.append('category', expandAll ? 'All' : s.category);
+  if (expandAll) fd.append('original_category', s.category);
   if (s.location) fd.append('location', s.location);
   if (s.dateLost) fd.append('date_lost', s.dateLost);
   if (s.email)    fd.append('email', s.email);
@@ -551,8 +560,10 @@ async function submitLostReport(expandAll = false) {
     const data = await res.json();
     state.match.response      = data;
     state.match.lostForm      = { ...s };
+    state.match.lostItemId    = data.id || null;
     state.match.expandAll     = expandAll;
     state.match.selectedIndex = 0;
+    state.match.claimMessage  = null;
     renderMatchView();
     showView('match');
   } catch {
@@ -585,26 +596,39 @@ async function submitFoundReport() {
 
   try {
     const res = await fetch(`${API_BASE}/found`, { method: 'POST', body: fd });
-    if (!res.ok) throw new Error('Submit failed');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      const detail = err.detail;
+      const message = typeof detail === 'string'
+        ? detail
+        : Array.isArray(detail)
+          ? detail.map(d => d.msg || JSON.stringify(d)).join('; ')
+          : 'Submit failed';
+      throw new Error(message);
+    }
     state.found.step = 'success';
     renderFoundStep();
-  } catch {
+  } catch (err) {
     if (btn)   { btn.disabled = false; btn.textContent = 'Submit found item →'; }
-    if (errEl) errEl.classList.add('visible');
+    if (errEl) {
+      errEl.textContent = err.message || 'Something went wrong. Please try again.';
+      errEl.classList.add('visible');
+    }
   }
 }
 
 /* ─────────────────────── MATCH VIEW ─────────────────────── */
 
-function getConfidenceLabel(score) {
-  if (score >= 0.85) return { text: 'Strong match',   cls: 'strong',   color: 'emerald' };
-  if (score >= 0.70) return { text: 'Possible match', cls: 'possible', color: 'amber' };
-  if (score >= 0.60) return { text: 'Weak match',     cls: 'weak',     color: 'red' };
+function tierLabel(match) {
+  const tier = match.tier;
+  if (tier === 'strong') return { text: 'Strong match', cls: 'strong', color: 'emerald' };
+  if (tier === 'possible') return { text: 'Possible match', cls: 'possible', color: 'amber' };
+  if (tier === 'weak') return { text: 'Weak match', cls: 'weak', color: 'red' };
   return null;
 }
 
 function filterMatches(matches) {
-  return (matches || []).filter(m => m.score >= 0.60);
+  return (matches || []).filter(m => m.tier);
 }
 
 function scoreRowHTML(label, value, colorClass) {
@@ -620,12 +644,11 @@ function scoreRowHTML(label, value, colorClass) {
 }
 
 function renderMatchView() {
-  const { response, lostForm, selectedIndex } = state.match;
+  const { response, lostForm, selectedIndex, claimMessage } = state.match;
   const container   = document.getElementById('match-container');
   const matches     = filterMatches(response.matches);
   const category    = response.category_searched || lostForm.category;
   const total       = response.total_compared || 0;
-  const breakdown   = response.scores_breakdown || {};
 
   if (matches.length === 0) {
     container.innerHTML = buildEmptyMatchHTML(category, total);
@@ -634,23 +657,34 @@ function renderMatchView() {
   }
 
   const top          = matches[selectedIndex] || matches[0];
-  const conf         = getConfidenceLabel(top.score);
+  const conf         = tierLabel(top);
   const pct          = Math.round(top.score * 100);
   const fillColor    = conf ? conf.color : 'emerald';
   const others       = matches.filter((_, i) => i !== selectedIndex);
   const imgSrc       = top.image_url ? `${API_BASE}${top.image_url}` : null;
   const initials     = (top.reported_by || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
-  const sameCategory = top.category === lostForm.category;
+  const sameCategory = typeof top.same_category === 'boolean'
+    ? top.same_category
+    : top.category === lostForm.category;
+  const breakdown    = top.scores_breakdown || response.scores_breakdown || {};
+  const bannerTitle  = conf ? `${conf.text} found!` : 'Possible match found!';
 
   container.innerHTML = `
     <button class="back-link" id="match-back-landing">← Back</button>
 
+    ${claimMessage ? `
+      <div class="claim-success-banner">
+        <div class="claim-success-title">✓ Claim submitted</div>
+        <div class="claim-success-sub">${claimMessage}</div>
+      </div>
+    ` : ''}
+
     <div class="match-banner">
       <div class="match-banner-header">
         <div class="match-banner-dot"></div>
-        <div class="match-banner-title">Possible match found!</div>
+        <div class="match-banner-title">${bannerTitle}</div>
       </div>
-      <div class="match-banner-sub">Searched ${total} found items in the category: ${category}</div>
+      <div class="match-banner-sub">Compared ${total} found items · Search scope: ${category}</div>
       <div class="confidence-row">
         <div class="confidence-label">Match confidence</div>
         <div class="confidence-track">
@@ -712,8 +746,11 @@ function renderMatchView() {
     </div>
 
     <div class="action-btns">
-      <button class="btn-emerald" id="btn-this-is-mine">✓ This is mine</button>
+      <button class="btn-emerald" id="btn-this-is-mine" ${claimMessage ? 'disabled' : ''}>
+        ${claimMessage ? 'Claim submitted' : '✓ This is mine'}
+      </button>
       <button class="btn-secondary" id="btn-not-mine">Not my item</button>
+      <div class="error-banner" id="claim-error">Something went wrong. Please try again.</div>
     </div>
 
     ${others.length > 0 ? `
@@ -721,11 +758,12 @@ function renderMatchView() {
       ${others.map(m => {
         const realIdx = matches.indexOf(m);
         const mPct    = Math.round(m.score * 100);
+        const mTier   = tierLabel(m);
         return `<div class="candidate-card" data-idx="${realIdx}">
           <div class="candidate-emoji">${getCategoryEmoji(m.category)}</div>
           <div class="candidate-body">
             <div class="candidate-name">${m.description || m.category}</div>
-            <div class="candidate-loc">${m.location || '—'}</div>
+            <div class="candidate-loc">${m.location || '—'} · ${mTier ? mTier.text : ''}</div>
           </div>
           <span class="pill pill-category" style="font-size:10px;">${m.category}</span>
           <div class="candidate-score">${mPct}%</div>
@@ -734,10 +772,10 @@ function renderMatchView() {
     ` : ''}
 
     <div class="match-footer-note">
-      Showing ${matches.length} of ${total} reports compared in category: ${category} · Ranked by combined CLIP similarity
+      Showing ${matches.length} of ${total} reports compared · Scope: ${category} · Ranked by weighted CLIP similarity
     </div>`;
 
-  bindMatchEvents();
+  bindMatchEvents(top);
   fixButtonTypes();
 }
 
@@ -759,24 +797,57 @@ function buildEmptyMatchHTML(category, total) {
       }
     </div>
     <div class="match-footer-note">
-      Searched ${total} reports in category: ${category} · Ranked by combined CLIP similarity
+      Searched ${total} reports · Scope: ${category} · Ranked by weighted CLIP similarity
     </div>`;
 }
 
-function bindMatchEvents() {
+function bindMatchEvents(topMatch) {
   const container = document.getElementById('match-container');
   container.querySelector('#match-back-landing')?.addEventListener('click', () => showView('landing'));
   container.querySelector('#btn-not-mine')?.addEventListener('click', () => showView('landing'));
-  container.querySelector('#btn-this-is-mine')?.addEventListener('click', () => {
-    // placeholder — wire to your claim endpoint later
-    alert('Claim confirmed! Check your email for next steps.');
-  });
+  container.querySelector('#btn-this-is-mine')?.addEventListener('click', () => claimCurrentMatch(topMatch));
   container.querySelectorAll('.candidate-card').forEach(card => {
     card.addEventListener('click', () => {
       state.match.selectedIndex = parseInt(card.dataset.idx, 10);
       renderMatchView();
     });
   });
+}
+
+async function claimCurrentMatch(topMatch) {
+  const btn = document.getElementById('btn-this-is-mine');
+  const errEl = document.getElementById('claim-error');
+  if (!topMatch || !state.match.lostItemId) {
+    if (errEl) {
+      errEl.textContent = 'Missing report id. Please re-submit the lost report.';
+      errEl.classList.add('visible');
+    }
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = 'Claiming…'; }
+  if (errEl) errEl.classList.remove('visible');
+
+  try {
+    const res = await fetch(`${API_BASE}/claim`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        found_item_id: topMatch.id,
+        lost_item_id: state.match.lostItemId,
+        email: state.match.lostForm?.email || null,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || 'Claim failed');
+    state.match.claimMessage = data.message || data.notify_message || 'Claim recorded.';
+    renderMatchView();
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.textContent = '✓ This is mine'; }
+    if (errEl) {
+      errEl.textContent = err.message || 'Something went wrong. Please try again.';
+      errEl.classList.add('visible');
+    }
+  }
 }
 
 function bindEmptyMatchEvents() {
@@ -796,22 +867,79 @@ async function expandSearch() {
   await submitLostReport(true);
 }
 
+/* ─────────────────────── ADMIN QUEUE ─────────────────────── */
+
+async function openAdminQueue() {
+  showView('admin');
+  const container = document.getElementById('admin-container');
+  container.innerHTML = `
+    <div class="category-loading" style="margin-top:24px">
+      <div class="spinner"></div>
+      <div class="category-loading-text">Loading queue…</div>
+    </div>`;
+
+  try {
+    const res = await fetch(`${API_BASE}/queue`);
+    if (!res.ok) throw new Error('Failed to load queue');
+    const data = await res.json();
+    container.innerHTML = `
+      <button class="back-link" id="admin-back">← Back</button>
+      <div class="flow-header">
+        <div class="flow-eyebrow">Desk view</div>
+        <div class="flow-title">Campus <span>queue</span></div>
+        <p class="flow-subtitle">Found reports, lost reports, and claims currently in the system.</p>
+      </div>
+      <div class="admin-grid">
+        ${renderAdminColumn('Found items', data.found_items || [], item => `
+          <div class="admin-card">
+            <div class="admin-card-title">${getCategoryEmoji(item.category)} ${item.category}</div>
+            <div class="admin-card-body">${item.description || 'No description'}</div>
+            <div class="admin-card-meta">${item.location || '—'} · ${item.status}</div>
+          </div>`)}
+        ${renderAdminColumn('Lost items', data.lost_items || [], item => `
+          <div class="admin-card">
+            <div class="admin-card-title">${getCategoryEmoji(item.category)} ${item.category}</div>
+            <div class="admin-card-body">${item.description || 'No description'}</div>
+            <div class="admin-card-meta">${item.location || '—'} · ${item.status}</div>
+          </div>`)}
+        ${renderAdminColumn('Claims', data.claims || [], item => `
+          <div class="admin-card">
+            <div class="admin-card-title">Claim ${item.status}</div>
+            <div class="admin-card-body">${item.notify_message || 'No message'}</div>
+            <div class="admin-card-meta">${item.claimed_by_email || '—'}</div>
+          </div>`)}
+      </div>`;
+    document.getElementById('admin-back')?.addEventListener('click', () => showView('landing'));
+  } catch {
+    container.innerHTML = `
+      <button class="back-link" id="admin-back">← Back</button>
+      <div class="error-banner visible">Could not load the queue. Is the API running?</div>`;
+    document.getElementById('admin-back')?.addEventListener('click', () => showView('landing'));
+  }
+}
+
+function renderAdminColumn(title, items, renderItem) {
+  return `<div class="admin-column">
+    <div class="admin-column-title">${title} (${items.length})</div>
+    ${items.length ? items.map(renderItem).join('') : '<div class="admin-empty">None yet</div>'}
+  </div>`;
+}
+
 /* ─────────────────────── BOOT ─────────────────────── */
 
 document.addEventListener('DOMContentLoaded', () => {
   fixButtonTypes();
-  // Landing nav logo
   document.getElementById('nav-logo-landing')?.addEventListener('click', () => showView('landing'));
   document.getElementById('nav-logo-lost')?.addEventListener('click',    () => showView('landing'));
   document.getElementById('nav-logo-found')?.addEventListener('click',   () => showView('landing'));
   document.getElementById('nav-logo-match')?.addEventListener('click',   () => showView('landing'));
+  document.getElementById('nav-logo-admin')?.addEventListener('click',   () => showView('landing'));
 
-  // Fork cards
   document.getElementById('btn-start-lost')?.addEventListener('click',  startLostFlow);
   document.getElementById('btn-start-found')?.addEventListener('click', startFoundFlow);
 
-  // Bottom CTA
   document.getElementById('btn-cta-lost')?.addEventListener('click',  startLostFlow);
   document.getElementById('btn-cta-found')?.addEventListener('click', startFoundFlow);
-  
+
+  document.getElementById('btn-open-admin')?.addEventListener('click', openAdminQueue);
 });

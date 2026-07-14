@@ -12,4 +12,4 @@ COPY . .
 
 EXPOSE 8000
 
-CMD sh -c "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+CMD sh -c "until alembic upgrade head; do echo 'Waiting for database...'; sleep 2; done && uvicorn main:app --host 0.0.0.0 --port 8000 --reload"

@@ -2,34 +2,41 @@ services:
   api:
     build: backend/
     depends_on:
-      - postgres
-    
+      postgres:
+        condition: service_healthy
     volumes:
       - ./backend:/app
     ports:
       - "8000:8000"
     env_file:
       - backend/.env
-  
+    restart: unless-stopped
+
   postgres:
-    image: postgres
+    image: pgvector/pgvector:pg16
     environment:
-       - POSTGRES_USER=jdeeza
-       - POSTGRES_PASSWORD=password123
-       - POSTGRES_DB=lost_and_found
+      - POSTGRES_USER=jdeeza
+      - POSTGRES_PASSWORD=password123
+      - POSTGRES_DB=lost_and_found
     volumes:
       - postgres-db:/var/lib/postgresql
     ports:
       - "5432:5432"
-
-      # add your DB/env vars here
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jdeeza -d lost_and_found"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
 
   frontend:
     build: ./frontend
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
     ports:
       - "3000:80"
     depends_on:
       - api
-      
+
 volumes:
   postgres-db:

@@ -4,6 +4,8 @@ from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 from database import SQLALCHEMY_DATABASE_URL, Base
 from alembic import context
+import models  # noqa: F401 — register models for migrations
+from pgvector.sqlalchemy import Vector  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
