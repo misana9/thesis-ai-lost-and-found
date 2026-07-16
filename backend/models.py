@@ -15,6 +15,8 @@ class Users(Base):
     password = Column(String, nullable=False)
     full_name = Column(String, nullable=False)
     is_admin = Column(Boolean, nullable=False, server_default="false")
+    email_verified = Column(Boolean, nullable=False, server_default="false")
+    email_verification_token = Column(String, nullable=True)
 
 
 class FoundItem(Base):

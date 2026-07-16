@@ -8,6 +8,12 @@ from sqlalchemy.orm import Session
 from categories import CATEGORIES
 from clip_service import cosine_similarity, encode_pil_image, encode_text, predict_category
 from database import get_db
+from email_service import (
+    notify_claim_to_finder,
+    notify_claim_to_owner,
+    notify_match_to_finder,
+    notify_match_to_owner,
+)
 from image_utils import read_and_sanitize_image
 from matching import compute_match
 import models
@@ -20,6 +26,35 @@ UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 DEDUP_THRESHOLD = 0.98
+
+
+def normalize_email(value: str | None) -> str | None:
+    if not value:
+        return None
+    cleaned = value.strip().lower()
+    return cleaned or None
+
+
+def resolve_uploader_email(
+    form_email: str | None,
+    current_user: models.Users | None,
+    *,
+    required: bool = True,
+) -> str | None:
+    """Prefer authenticated user email; fall back to form. Require for ownership tracking."""
+    email = normalize_email(current_user.email if current_user else None) or normalize_email(form_email)
+    if required and not email:
+        raise HTTPException(
+            status_code=400,
+            detail="Email is required so we can notify you about matches and claims",
+        )
+    return email
+
+
+def emails_match(a: str | None, b: str | None) -> bool:
+    left = normalize_email(a)
+    right = normalize_email(b)
+    return bool(left and right and left == right)
 
 
 def format_reported_by(email: str | None, full_name: str | None = None) -> str | None:
@@ -61,6 +96,63 @@ def find_near_duplicate(db: Session, image_embedding: list[float]) -> models.Fou
     return None
 
 
+def score_lost_against_found(
+    *,
+    lost_text_embedding: list[float],
+    lost_image_embedding: list[float] | None,
+    lost_category: str,
+    lost_location: str | None,
+    lost_date: str | None,
+    found: models.FoundItem,
+) -> dict | None:
+    found_image = embedding_list(found.image_embedding)
+    found_text = embedding_list(found.text_embedding)
+    if found_image is None:
+        return None
+
+    text_to_image = cosine_similarity(lost_text_embedding, found_image)
+    image_to_image = (
+        cosine_similarity(lost_image_embedding, found_image)
+        if lost_image_embedding is not None
+        else None
+    )
+    found_text_to_lost_image = (
+        cosine_similarity(found_text, lost_image_embedding)
+        if (found_text is not None and lost_image_embedding is not None)
+        else None
+    )
+
+    final_score, tier, same_category, scores_breakdown = compute_match(
+        text_to_image=text_to_image,
+        image_to_image=image_to_image,
+        found_text_to_lost_image=found_text_to_lost_image,
+        lost_category=lost_category,
+        found_category=found.category,
+        lost_location=lost_location,
+        found_location=found.location,
+        lost_date=lost_date,
+        found_date=found.date_found,
+    )
+    if tier is None:
+        return None
+
+    return {
+        "id": found.id,
+        "score": final_score,
+        "category": found.category,
+        "description": found.description,
+        "location": found.location,
+        "date_found": found.date_found,
+        "time_found": found.time_found,
+        "reported_by": found.reported_by,
+        "image_url": f"/uploads/{found.image_path}" if found.image_path else None,
+        "same_category": same_category,
+        "tier": tier,
+        "scores_breakdown": scores_breakdown,
+        "finder_email": found.finder_email,
+    }
+
+
 @router.post("/predict-category", response_model=schemas.CategoryPredictionResponse)
 async def predict_item_category(image: UploadFile = File(...)):
     try:
@@ -86,6 +178,8 @@ async def report_found_item(
     if category not in CATEGORIES:
         raise HTTPException(status_code=400, detail=f"Invalid category. Must be one of: {', '.join(CATEGORIES)}")
 
+    email = resolve_uploader_email(finder_email, current_user)
+
     try:
         pil_image, jpeg_bytes = await read_and_sanitize_image(image)
         image_embedding = encode_pil_image(pil_image)
@@ -107,13 +201,11 @@ async def report_found_item(
     text_embedding = encode_text(description) if description else None
     now = datetime.now()
 
-    email = finder_email
-    reported_by = format_reported_by(email)
-    finder_user_id = None
-    if current_user:
-        email = current_user.email
-        reported_by = format_reported_by(current_user.email, current_user.full_name)
-        finder_user_id = current_user.id
+    reported_by = format_reported_by(
+        email,
+        current_user.full_name if current_user else None,
+    )
+    finder_user_id = current_user.id if current_user else None
 
     item = models.FoundItem(
         description=description,
@@ -133,11 +225,68 @@ async def report_found_item(
     db.commit()
     db.refresh(item)
 
+    # Reverse match: notify owners of open lost reports that may match this find.
+    # Skip any lost report filed by the same email (self-match).
+    open_lost = (
+        db.query(models.LostItem)
+        .filter(models.LostItem.status == "open")
+        .filter(models.LostItem.text_embedding.isnot(None))
+        .all()
+    )
+    reverse_hits: list[dict] = []
+    for lost in open_lost:
+        if emails_match(lost.email, email):
+            continue
+        lost_text = embedding_list(lost.text_embedding)
+        if lost_text is None:
+            continue
+        hit = score_lost_against_found(
+            lost_text_embedding=lost_text,
+            lost_image_embedding=embedding_list(lost.image_embedding),
+            lost_category=lost.category,
+            lost_location=lost.location,
+            lost_date=lost.date_lost,
+            found=item,
+        )
+        if hit is None:
+            continue
+        reverse_hits.append({**hit, "lost_id": lost.id, "owner_email": lost.email})
+
+    reverse_hits.sort(key=lambda m: m["score"], reverse=True)
+    notified = 0
+    notified_finders: set[str] = set()
+    for hit in reverse_hits:
+        owner = normalize_email(hit.get("owner_email"))
+        if not owner:
+            continue
+        notify_match_to_owner(
+            owner_email=owner,
+            category=hit["category"],
+            match_count=1,
+            top_score=hit["score"],
+        )
+        notified += 1
+        if email and email not in notified_finders:
+            notify_match_to_finder(
+                finder_email=email,
+                category=item.category,
+                location=item.location,
+            )
+            notified_finders.add(email)
+
+    message = "Found item reported successfully"
+    if reverse_hits:
+        message = (
+            f"Found item reported successfully. "
+            f"Notified {notified} owner(s) of possible matching lost report(s)."
+        )
+
     return {
         "id": item.id,
-        "message": "Found item reported successfully",
+        "message": message,
         "category": item.category,
         "embedding_stored": True,
+        "matches_notified": notified,
     }
 
 
@@ -161,6 +310,8 @@ async def report_lost_item(
             detail=f"Invalid category. Must be one of: {', '.join(CATEGORIES)}",
         )
 
+    owner_email = resolve_uploader_email(email, current_user)
+
     lost_image_embedding = None
     image_path = None
 
@@ -177,12 +328,7 @@ async def report_lost_item(
 
     lost_text_embedding = encode_text(description)
     lost_category = preferred_category
-
-    owner_email = email
-    owner_user_id = None
-    if current_user:
-        owner_email = current_user.email
-        owner_user_id = current_user.id
+    owner_user_id = current_user.id if current_user else None
 
     lost_item = models.LostItem(
         description=description,
@@ -210,59 +356,45 @@ async def report_lost_item(
 
     ranked_matches: list[dict] = []
     for found in found_items:
-        found_image = embedding_list(found.image_embedding)
-        found_text = embedding_list(found.text_embedding)
-        if found_image is None:
+        # Never surface the uploader's own found reports as matches.
+        if emails_match(found.finder_email, owner_email):
             continue
 
-        text_to_image = cosine_similarity(lost_text_embedding, found_image)
-        image_to_image = (
-            cosine_similarity(lost_image_embedding, found_image)
-            if lost_image_embedding is not None
-            else None
-        )
-        found_text_to_lost_image = (
-            cosine_similarity(found_text, lost_image_embedding)
-            if (found_text is not None and lost_image_embedding is not None)
-            else None
-        )
-
-        # Soft category preference via scoring — never hard-filter candidates.
-        compare_category = preferred_category
-
-        final_score, tier, same_category, scores_breakdown = compute_match(
-            text_to_image=text_to_image,
-            image_to_image=image_to_image,
-            found_text_to_lost_image=found_text_to_lost_image,
-            lost_category=compare_category,
-            found_category=found.category,
+        match = score_lost_against_found(
+            lost_text_embedding=lost_text_embedding,
+            lost_image_embedding=lost_image_embedding,
+            lost_category=preferred_category,
             lost_location=location,
-            found_location=found.location,
             lost_date=date_lost,
-            found_date=found.date_found,
+            found=found,
         )
-
-        if tier is None:
+        if match is None:
             continue
-
-        ranked_matches.append(
-            {
-                "id": found.id,
-                "score": final_score,
-                "category": found.category,
-                "description": found.description,
-                "location": found.location,
-                "date_found": found.date_found,
-                "time_found": found.time_found,
-                "reported_by": found.reported_by,
-                "image_url": f"/uploads/{found.image_path}" if found.image_path else None,
-                "same_category": same_category,
-                "tier": tier,
-                "scores_breakdown": scores_breakdown,
-            }
-        )
+        ranked_matches.append({k: v for k, v in match.items() if k != "finder_email"})
 
     ranked_matches.sort(key=lambda match: match["score"], reverse=True)
+    for index, match in enumerate(ranked_matches, start=1):
+        match["rank"] = index
+
+    if ranked_matches and owner_email:
+        notify_match_to_owner(
+            owner_email=owner_email,
+            category=lost_category,
+            match_count=len(ranked_matches),
+            top_score=ranked_matches[0]["score"],
+        )
+        notified_finders: set[str] = set()
+        for match in ranked_matches:
+            # Re-fetch finder email from DB row for notification.
+            found_row = next((f for f in found_items if f.id == match["id"]), None)
+            finder = normalize_email(found_row.finder_email if found_row else None)
+            if finder and finder not in notified_finders:
+                notify_match_to_finder(
+                    finder_email=finder,
+                    category=match["category"],
+                    location=match.get("location"),
+                )
+                notified_finders.add(finder)
 
     top_breakdown = (
         ranked_matches[0]["scores_breakdown"]
@@ -280,6 +412,11 @@ async def report_lost_item(
         "total_compared": len(found_items),
         "category_searched": category_searched,
         "scores_breakdown": top_breakdown,
+        "lost_image_url": f"/uploads/{lost_item.image_path}" if lost_item.image_path else None,
+        "lost_description": lost_item.description,
+        "lost_category": lost_item.category,
+        "lost_location": lost_item.location,
+        "lost_date": lost_item.date_lost,
     }
 
 
@@ -299,16 +436,36 @@ async def claim_item(
     if lost.status == "claimed":
         raise HTTPException(status_code=409, detail="This lost report was already claimed")
 
-    email = body.email or lost.email
-    user_id = None
-    if current_user:
-        email = current_user.email
-        user_id = current_user.id
+    email = resolve_uploader_email(body.email or lost.email, current_user)
+    if emails_match(email, found.finder_email):
+        raise HTTPException(
+            status_code=400,
+            detail="You cannot claim an item you reported found yourself",
+        )
+
+    user_id = current_user.id if current_user else None
+    finder_email = normalize_email(found.finder_email)
+
+    owner_result = notify_claim_to_owner(
+        owner_email=email,
+        category=found.category,
+        finder_email=finder_email,
+    )
+    finder_result = (
+        notify_claim_to_finder(
+            finder_email=finder_email,
+            category=found.category,
+            owner_email=email,
+        )
+        if finder_email
+        else {"sent": False, "reason": "missing_finder_email"}
+    )
 
     notify_message = (
         f"Claim submitted for found item {found.id}. "
-        f"Owner ({email or 'unknown'}) and finder ({found.finder_email or found.reported_by or 'unknown'}) "
-        f"would be emailed to arrange pickup at Library Information Desk."
+        f"Owner email ({email}): {'sent' if owner_result.get('sent') else 'failed'} via {owner_result.get('mode', 'n/a')}. "
+        f"Finder email ({finder_email or 'missing'}): "
+        f"{'sent' if finder_result.get('sent') else 'not sent'} via {finder_result.get('mode', 'n/a')}."
     )
 
     claim = models.Claim(
@@ -322,6 +479,8 @@ async def claim_item(
     found.status = "claimed"
     found.claimed_by_lost_id = lost.id
     lost.status = "claimed"
+    if not lost.email:
+        lost.email = email
 
     db.add(claim)
     db.commit()
@@ -330,7 +489,7 @@ async def claim_item(
     return {
         "id": claim.id,
         "status": claim.status,
-        "message": "Claim recorded. We'll notify the finder by email.",
+        "message": "Claim recorded. Owner and finder have been emailed to arrange pickup.",
         "notify_message": notify_message,
     }
 

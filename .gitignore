@@ -1,3 +1,5 @@
 __pycache__
 .env
 node_modules
+backend/mail_outbox/
+backend/uploads/

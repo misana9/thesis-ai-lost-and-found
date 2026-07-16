@@ -85,6 +85,11 @@ nav {
   background: var(--ink-edge); border: 1px solid var(--ink-edge);
   padding: 7px 16px; border-radius: 999px; cursor: pointer; text-decoration: none;
 }
+.nav-user-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
 
 .back-link {
   display: inline-flex; align-items: center; gap: 6px;
@@ -421,12 +426,14 @@ footer {
 .field { margin-bottom: 14px; }
 .field:last-child { margin-bottom: 0; }
 .field label { display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 6px; }
-.field input[type="text"], .field textarea {
+.field input[type="text"], .field input[type="password"], .field input[type="email"], .field textarea {
   width: 100%; padding: 10px 14px; border: 1.5px solid var(--card-border);
   border-radius: var(--radius-sm); font-family: 'Inter', sans-serif;
   font-size: 14px; color: #1E293B; background: #F8FAFC; outline: none; transition: border-color 0.2s;
 }
 .field input:focus, .field textarea:focus { border-color: var(--indigo); background: #fff; }
+.field-error-msg { font-size: 12px; color: var(--red); margin-top: 4px; }
+.field input.field-error { border-color: var(--red); }
 .field textarea { height: 90px; resize: none; line-height: 1.5; }
 .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 @media (max-width: 400px) { .row-2 { grid-template-columns: 1fr; } }
@@ -554,7 +561,51 @@ footer {
 .recap-pills { display: flex; gap: 6px; flex-wrap: wrap; }
 .pill { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 999px; }
 .pill-lost { background: rgba(239,68,68,0.15); color: #FCA5A5; }
+.pill-found { background: rgba(16,185,129,0.15); color: #6EE7B7; }
 .pill-category { background: rgba(99,102,241,0.15); color: #A5B4FC; }
+
+.compare-panel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.compare-card {
+  background: var(--ink-mid);
+  border: 1px solid var(--ink-edge);
+  border-radius: var(--radius);
+  overflow: hidden;
+  min-width: 0;
+}
+.compare-card.lost { border-color: rgba(239,68,68,0.35); }
+.compare-card.found { border-color: rgba(16,185,129,0.45); }
+.compare-card-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  padding: 10px 12px; border-bottom: 1px solid var(--ink-edge);
+}
+.compare-card-title { font-size: 11px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; color: var(--text-2); }
+.compare-img {
+  height: 150px; background: rgba(255,255,255,0.04);
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+}
+.compare-img img { width: 100%; height: 100%; object-fit: cover; }
+.compare-placeholder {
+  font-size: 12px; color: var(--text-3); text-align: center; padding: 12px; line-height: 1.4;
+}
+.compare-meta { padding: 10px 12px 12px; }
+.compare-meta-name { font-size: 13px; font-weight: 700; color: var(--text-1); margin-bottom: 4px; line-height: 1.3; }
+.compare-meta-desc {
+  font-size: 12px; color: var(--text-2); line-height: 1.4; margin-bottom: 8px;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.compare-meta-line { font-size: 11px; color: var(--text-3); margin-bottom: 2px; }
+.compare-vs {
+  display: none;
+}
+@media (min-width: 420px) {
+  .compare-panel { gap: 12px; }
+  .compare-img { height: 170px; }
+}
 
 .best-match-card {
   background: var(--card-white); border: 2px solid var(--emerald);
@@ -635,9 +686,23 @@ footer {
   background: var(--ink-mid); border: 1px solid var(--ink-edge);
   border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 8px;
   display: flex; align-items: center; gap: 12px; cursor: pointer;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 .candidate-card:hover { border-color: var(--indigo); }
+.candidate-card.selected {
+  border-color: var(--emerald);
+  box-shadow: 0 0 0 2px rgba(16,185,129,0.25);
+}
+.candidate-rank {
+  width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 800; background: rgba(99,102,241,0.18); color: #A5B4FC;
+}
+.candidate-card.selected .candidate-rank { background: rgba(16,185,129,0.2); color: #34D399; }
+.candidate-thumb {
+  width: 44px; height: 44px; border-radius: 10px; object-fit: cover;
+  background: rgba(255,255,255,0.06); flex-shrink: 0;
+}
 .candidate-emoji { font-size: 24px; flex-shrink: 0; }
 .candidate-body { flex: 1; min-width: 0; }
 .candidate-name { font-size: 13px; font-weight: 600; color: var(--text-1); margin-bottom: 2px; }
@@ -645,6 +710,17 @@ footer {
 .candidate-score { font-size: 13px; font-weight: 700; color: var(--amber); flex-shrink: 0; }
 
 .candidates-title { font-size: 14px; font-weight: 700; color: var(--text-2); margin-bottom: 10px; letter-spacing: -0.2px; }
+.rank-nav {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-bottom: 14px;
+}
+.rank-nav-btn {
+  font-size: 12px; font-weight: 700; font-family: inherit; cursor: pointer;
+  padding: 8px 12px; border-radius: 10px; border: 1px solid var(--ink-edge);
+  background: var(--ink-mid); color: var(--text-1);
+}
+.rank-nav-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.rank-nav-status { font-size: 12px; font-weight: 600; color: var(--text-2); text-align: center; }
 
 .empty-state { text-align: center; padding: 40px 20px; }
 .empty-state .radar-wrap { position: relative; width: 200px; height: 200px; margin: 0 auto 24px; transform: none; top: auto; left: auto; }
@@ -692,19 +768,79 @@ footer {
 .admin-card-body { font-size: 13px; color: var(--text-2); margin-bottom: 6px; line-height: 1.4; }
 .admin-card-meta { font-size: 11px; color: var(--text-3); }
 .admin-empty { font-size: 13px; color: var(--text-3); padding: 8px 0; }
+
+/* ── AUTH ── */
+.auth-logo {
+  text-align: center;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.8px;
+  color: var(--text-1);
+  margin: 24px 0 28px;
+  cursor: pointer;
+}
+.auth-logo span { color: var(--indigo); }
+.auth-switch {
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-2);
+  margin-top: 14px;
+}
+.auth-switch button {
+  background: none;
+  border: none;
+  color: var(--indigo);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+.auth-forgot {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-3);
+  margin-top: 18px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  font-family: inherit;
+  text-decoration: underline;
+}
+.lockout-banner {
+  background: rgba(245,158,11,0.1);
+  border: 1px solid rgba(245,158,11,0.3);
+  color: #D97706;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  margin-top: 12px;
+  display: none;
+}
+.lockout-banner.visible { display: block; }
+.strength-bar-wrap  { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.strength-bar-track { flex: 1; height: 4px; background: var(--card-border); border-radius: 999px; overflow: hidden; }
+.strength-bar-fill  { height: 100%; border-radius: 999px; transition: width 0.3s, background 0.3s; }
+.strength-label     { font-size: 11px; font-weight: 600; min-width: 40px; }
+.strength-label.red { color: var(--red); }
+.strength-label.amber { color: var(--amber); }
+.strength-label.emerald { color: var(--emerald); }
+.strength-label.gray { color: var(--text-3); }
+.strength-bar-fill.red { background: var(--red); }
+.strength-bar-fill.amber { background: var(--amber); }
+.strength-bar-fill.emerald { background: var(--emerald); }
+.strength-bar-fill.gray { background: #CBD5E1; }
 </style>
 </head>
 <body>
 
 <!-- ═══════════════════════════════════════ VIEW 1: LANDING ═══ -->
-<div id="view-landing" class="view active">
+<div id="view-landing" class="view">
   <nav>
     <div class="logo" id="nav-logo-landing">Find<span>It</span></div>
-    <div class="nav-right">
-      <a href="#how" class="nav-link">How it works</a>
-      <button class="nav-link" id="btn-open-admin" style="background:none;border:none;cursor:pointer;font-family:inherit;">Queue</button>
-      <button class="nav-btn">Sign in</button>
-    </div>
+    <div class="nav-right"></div>
   </nav>
 
   <section class="hero">
@@ -815,7 +951,7 @@ footer {
 <div id="view-lost" class="view">
   <nav>
     <div class="logo" id="nav-logo-lost">Find<span>It</span></div>
-    <div class="nav-right"><button class="nav-btn">Sign in</button></div>
+    <div class="nav-right"></div>
   </nav>
   <div class="flow-page" id="lost-flow-container"></div>
 </div>
@@ -824,7 +960,7 @@ footer {
 <div id="view-found" class="view">
   <nav>
     <div class="logo" id="nav-logo-found">Find<span>It</span></div>
-    <div class="nav-right"><button class="nav-btn">Sign in</button></div>
+    <div class="nav-right"></div>
   </nav>
   <div class="flow-page" id="found-flow-container"></div>
 </div>
@@ -833,7 +969,7 @@ footer {
 <div id="view-match" class="view">
   <nav>
     <div class="logo" id="nav-logo-match">Find<span>It</span></div>
-    <div class="nav-right"><button class="nav-btn">Sign in</button></div>
+    <div class="nav-right"></div>
   </nav>
   <div class="match-page" id="match-container"></div>
 </div>
@@ -842,9 +978,27 @@ footer {
 <div id="view-admin" class="view">
   <nav>
     <div class="logo" id="nav-logo-admin">Find<span>It</span></div>
-    <div class="nav-right"><button class="nav-btn">Sign in</button></div>
+    <div class="nav-right"></div>
   </nav>
   <div class="flow-page" id="admin-container"></div>
+</div>
+
+<!-- ═══════════════════════════════════════ VIEW 6: LOGIN ═══ -->
+<div id="view-login" class="view">
+  <nav>
+    <div class="logo" id="nav-logo-login">Find<span>It</span></div>
+    <div class="nav-right"></div>
+  </nav>
+  <div class="flow-page" id="login-container"></div>
+</div>
+
+<!-- ═══════════════════════════════════════ VIEW 7: REGISTER ═══ -->
+<div id="view-register" class="view">
+  <nav>
+    <div class="logo" id="nav-logo-register">Find<span>It</span></div>
+    <div class="nav-right"></div>
+  </nav>
+  <div class="flow-page" id="register-container"></div>
 </div>
 
 <script src="main.js"></script>

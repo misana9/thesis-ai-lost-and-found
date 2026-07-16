@@ -10,6 +10,27 @@ class userRegister(user):
     full_name: str
 
 
+class AuthLoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class AuthRegisterRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+
+
+class AuthRegisterResponse(BaseModel):
+    message: str
+    dev_verify_url: str | None = None
+
+
+class AuthVerifyResponse(BaseModel):
+    message: str
+    email: str
+
+
 class token(BaseModel):
     access_token: str
     token_type: str
@@ -34,6 +55,7 @@ class FoundItemResponse(BaseModel):
     message: str
     category: str
     embedding_stored: bool
+    matches_notified: int = 0
 
 
 class ScoresBreakdown(BaseModel):
@@ -45,6 +67,7 @@ class ScoresBreakdown(BaseModel):
 class MatchItem(BaseModel):
     id: str
     score: float
+    rank: int
     category: str
     description: str | None = None
     location: str | None = None
@@ -63,6 +86,11 @@ class LostItemResponse(BaseModel):
     total_compared: int
     category_searched: str
     scores_breakdown: ScoresBreakdown
+    lost_image_url: str | None = None
+    lost_description: str | None = None
+    lost_category: str | None = None
+    lost_location: str | None = None
+    lost_date: str | None = None
 
 
 class ClaimRequest(BaseModel):

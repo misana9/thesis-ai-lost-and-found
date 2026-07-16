@@ -20,6 +20,7 @@ uploads_dir.mkdir(exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 
 app.include_router(auth.router)
+app.include_router(auth.legacy_router)
 app.include_router(clip_router.router)
 
 
