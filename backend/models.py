@@ -34,7 +34,7 @@ class FoundItem(Base):
     image_path = Column(String, nullable=True)
     image_embedding = Column(Vector(EMBEDDING_DIM), nullable=True)
     text_embedding = Column(Vector(EMBEDDING_DIM), nullable=True)
-    status = Column(String, nullable=False, server_default="available")  # available | claimed
+    status = Column(String, nullable=False, server_default="available")  # available | in_process | processed
     claimed_by_lost_id = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -52,7 +52,7 @@ class LostItem(Base):
     image_path = Column(String, nullable=True)
     image_embedding = Column(Vector(EMBEDDING_DIM), nullable=True)
     text_embedding = Column(Vector(EMBEDDING_DIM), nullable=True)
-    status = Column(String, nullable=False, server_default="open")  # open | claimed | notified
+    status = Column(String, nullable=False, server_default="open")  # open | in_process | processed
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -64,6 +64,10 @@ class Claim(Base):
     lost_item_id = Column(String, ForeignKey("lost_items.id"), nullable=False)
     claimed_by_email = Column(String, nullable=True)
     claimed_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    status = Column(String, nullable=False, server_default="pending")  # pending | confirmed | rejected
+    status = Column(String, nullable=False, server_default="in_process")  # in_process | processed
+    owner_confirmed = Column(Boolean, nullable=False, server_default="false")
+    finder_confirmed = Column(Boolean, nullable=False, server_default="false")
+    owner_confirm_token = Column(String, nullable=True)
+    finder_confirm_token = Column(String, nullable=True)
     notify_message = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

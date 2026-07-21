@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     smtp_from: str = "FindIt <noreply@findit.local>"
     smtp_tls: bool = True
 
+    # Used for exchange-confirmation links in emails
+    frontend_base_url: str = "http://localhost:3000"
+
     class Config:
         env_file = ".env"
 

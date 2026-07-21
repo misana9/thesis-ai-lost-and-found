@@ -52,9 +52,13 @@ const state = {
     response: null,
     lostForm: null,
     lostItemId: null,
+    foundItemId: null,
+    foundForm: null,
+    direction: 'lost_to_found', // 'lost_to_found' | 'found_to_lost'
     expandAll: false,
     selectedIndex: 0,
     claimMessage: null,
+    contact: null,
   },
   register: {
     successEmail: null,
@@ -73,7 +77,7 @@ const auth = {
 };
 
 const TOKEN_KEY = 'findit_token';
-const PROTECTED_VIEWS = ['landing', 'lost', 'found', 'match', 'admin'];
+const PROTECTED_VIEWS = ['landing', 'lost', 'found', 'match', 'admin', 'dashboard'];
 
 const loginAttempts = {
   count: 0,
@@ -151,9 +155,11 @@ function renderNav() {
   document.querySelectorAll('.nav-right').forEach(navRight => {
     if (isAuthed) {
       navRight.innerHTML = `
+        <button type="button" class="nav-btn btn-my-items">My items</button>
         <span class="nav-user-name">${firstName}</span>
         <button type="button" class="nav-btn btn-signout">Sign out</button>
       `;
+      navRight.querySelector('.btn-my-items')?.addEventListener('click', () => openDashboard());
       navRight.querySelector('.btn-signout')?.addEventListener('click', () => {
         clearToken();
         renderNav();
@@ -184,6 +190,7 @@ function showView(name) {
     found: 'view-found',
     match: 'view-match',
     admin: 'view-admin',
+    dashboard: 'view-dashboard',
     login: 'view-login',
     register: 'view-register',
   };
@@ -586,7 +593,7 @@ function buildFoundHTML(s) {
       <div class="success-state">
         <div class="success-check">✓</div>
         <div class="success-title">Your report is live.</div>
-        <div class="success-sub">${s.successMessage || "We'll notify you by email if we find the owner."}</div>
+        <div class="success-sub">${s.successMessage || "No open lost reports matched yet. Your found item is live for owners to discover."}</div>
         <button class="btn-primary" id="found-report-another">Report another item</button>
       </div>`;
   }
@@ -700,9 +707,13 @@ async function submitLostReport(expandAll = false) {
     state.match.response      = data;
     state.match.lostForm      = { ...s };
     state.match.lostItemId    = data.id || null;
+    state.match.foundItemId   = null;
+    state.match.foundForm     = null;
+    state.match.direction     = 'lost_to_found';
     state.match.expandAll     = expandAll;
     state.match.selectedIndex = 0;
     state.match.claimMessage  = null;
+    state.match.contact       = null;
     renderMatchView();
     showView('match');
   } catch (err) {
@@ -763,6 +774,24 @@ async function submitFoundReport() {
     }
     const data = await res.json().catch(() => ({}));
     state.found.successMessage = data.message || null;
+
+    const matches = filterMatches(data.matches);
+    if (matches.length > 0) {
+      state.match.response = data;
+      state.match.foundForm = { ...s };
+      state.match.foundItemId = data.id || null;
+      state.match.lostItemId = null;
+      state.match.lostForm = null;
+      state.match.direction = 'found_to_lost';
+      state.match.expandAll = false;
+      state.match.selectedIndex = 0;
+      state.match.claimMessage = null;
+      state.match.contact = null;
+      renderMatchView();
+      showView('match');
+      return;
+    }
+
     state.found.step = 'success';
     renderFoundStep();
   } catch (err) {
@@ -808,11 +837,14 @@ function scoreRowHTML(label, value, colorClass) {
 }
 
 function renderMatchView() {
-  const { response, lostForm, selectedIndex, claimMessage } = state.match;
+  const { response, lostForm, foundForm, selectedIndex, claimMessage, direction } = state.match;
+  const isReverse   = direction === 'found_to_lost';
   const container   = document.getElementById('match-container');
-  const matches     = filterMatches(response.matches);
-  const category    = response.category_searched || lostForm.category;
-  const total       = response.total_compared || 0;
+  const matches     = filterMatches(response?.matches);
+  const category    = isReverse
+    ? (response.category || foundForm?.category || '—')
+    : (response.category_searched || lostForm?.category || '—');
+  const total       = response?.total_compared || 0;
 
   if (matches.length === 0) {
     container.innerHTML = buildEmptyMatchHTML(category, total);
@@ -820,7 +852,6 @@ function renderMatchView() {
     return;
   }
 
-  // Clamp selection so rank #1 shows first by default.
   const safeIndex = Math.min(Math.max(selectedIndex || 0, 0), matches.length - 1);
   if (safeIndex !== selectedIndex) state.match.selectedIndex = safeIndex;
 
@@ -830,29 +861,59 @@ function renderMatchView() {
   const fillColor    = conf ? conf.color : 'emerald';
   const rankLabel    = selected.rank || (safeIndex + 1);
   const imgSrc       = selected.image_url ? `${API_BASE}${selected.image_url}` : null;
-  const initials     = (selected.reported_by || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  const mineCategory = isReverse ? (foundForm?.category || response.category) : (lostForm?.category || response.lost_category);
   const sameCategory = typeof selected.same_category === 'boolean'
     ? selected.same_category
-    : selected.category === lostForm.category;
+    : selected.category === mineCategory;
   const breakdown    = selected.scores_breakdown || response.scores_breakdown || {};
   const bannerTitle  = matches.length === 1
     ? (conf ? `${conf.text} found!` : 'Possible match found!')
     : `${matches.length} ranked matches found`;
 
-  const lostPreview = lostForm?.imagePreview
-    || (response.lost_image_url ? `${API_BASE}${response.lost_image_url}` : null);
-  const lostCategory = response.lost_category || lostForm?.category || '—';
-  const lostDesc = response.lost_description || lostForm?.description || '—';
-  const lostLocation = response.lost_location || lostForm?.location || '—';
-  const lostDate = response.lost_date || lostForm?.dateLost || '—';
+  const leftPreview = isReverse
+    ? (foundForm?.imagePreview || (response.found_image_url ? `${API_BASE}${response.found_image_url}` : null))
+    : (lostForm?.imagePreview || (response.lost_image_url ? `${API_BASE}${response.lost_image_url}` : null));
+  const leftCategory = isReverse
+    ? (response.category || foundForm?.category || '—')
+    : (response.lost_category || lostForm?.category || '—');
+  const leftDesc = isReverse
+    ? (response.found_description || foundForm?.description || '—')
+    : (response.lost_description || lostForm?.description || '—');
+  const leftLocation = isReverse
+    ? (response.found_location || foundForm?.location || '—')
+    : (response.lost_location || lostForm?.location || '—');
+  const leftDate = isReverse
+    ? (response.found_date || foundForm?.dateFound || '—')
+    : (response.lost_date || lostForm?.dateLost || '—');
+
+  const rightDate = isReverse ? (selected.date_lost || '—') : (selected.date_found || '—');
+  const primaryBtn = claimMessage
+    ? (isReverse ? 'Match accepted' : 'Claim submitted')
+    : (isReverse
+      ? `✓ Accept match — notify owner (rank #${rankLabel})`
+      : `✓ This is mine — claim rank #${rankLabel}`);
+  const secondaryBtn = safeIndex < matches.length - 1
+    ? 'Not this one — next ranked →'
+    : (isReverse ? 'None of these match' : 'None of these are mine');
+  const compareTitle = isReverse
+    ? 'Compare your found item with this open lost report'
+    : 'Compare your lost item with this match';
+  const scopeLine = isReverse
+    ? `${matches.length} above threshold · Compared ${total} open lost reports`
+    : `${matches.length} above threshold · Compared ${total} found items · Scope: ${category}`;
 
   container.innerHTML = `
     <button class="back-link" id="match-back-landing">← Back</button>
 
     ${claimMessage ? `
       <div class="claim-success-banner">
-        <div class="claim-success-title">✓ Claim submitted</div>
+        <div class="claim-success-title">✓ ${isReverse ? 'Match accepted' : 'Claim submitted'}</div>
         <div class="claim-success-sub">${claimMessage}</div>
+        <div class="claim-success-actions">
+          <button type="button" class="btn-emerald" id="btn-open-contact" style="width:auto;padding:10px 16px;font-size:13px">
+            View exchange / confirm →
+          </button>
+        </div>
       </div>
     ` : ''}
 
@@ -861,9 +922,7 @@ function renderMatchView() {
         <div class="match-banner-dot"></div>
         <div class="match-banner-title">${bannerTitle}</div>
       </div>
-      <div class="match-banner-sub">
-        ${matches.length} above threshold · Compared ${total} found items · Scope: ${category}
-      </div>
+      <div class="match-banner-sub">${scopeLine}</div>
       <div class="confidence-row">
         <div class="confidence-label">Rank #${rankLabel} confidence</div>
         <div class="confidence-track">
@@ -873,35 +932,35 @@ function renderMatchView() {
       </div>
     </div>
 
-    <div class="candidates-title" style="margin-top:0">Compare your lost item with this match</div>
+    <div class="candidates-title" style="margin-top:0">${compareTitle}</div>
     <div class="compare-panel">
-      <div class="compare-card lost">
+      <div class="compare-card ${isReverse ? 'found' : 'lost'}">
         <div class="compare-card-head">
-          <div class="compare-card-title">Your lost report</div>
-          <span class="pill pill-lost">Lost</span>
+          <div class="compare-card-title">${isReverse ? 'Your found report' : 'Your lost report'}</div>
+          <span class="pill ${isReverse ? 'pill-found' : 'pill-lost'}">${isReverse ? 'Found' : 'Lost'}</span>
         </div>
         <div class="compare-img">
-          ${lostPreview
-            ? `<img src="${lostPreview}" alt="Your lost item"/>`
-            : `<div class="compare-placeholder">${getCategoryEmoji(lostCategory)}<br/>No photo uploaded</div>`
+          ${leftPreview
+            ? `<img src="${leftPreview}" alt="Your item"/>`
+            : `<div class="compare-placeholder">${getCategoryEmoji(leftCategory)}<br/>No photo uploaded</div>`
           }
         </div>
         <div class="compare-meta">
-          <div class="compare-meta-name">${getCategoryEmoji(lostCategory)} ${lostCategory}</div>
-          <div class="compare-meta-desc">${lostDesc}</div>
-          <div class="compare-meta-line">Where: ${lostLocation}</div>
-          <div class="compare-meta-line">Date: ${lostDate}</div>
+          <div class="compare-meta-name">${getCategoryEmoji(leftCategory)} ${leftCategory}</div>
+          <div class="compare-meta-desc">${leftDesc}</div>
+          <div class="compare-meta-line">Where: ${leftLocation}</div>
+          <div class="compare-meta-line">Date: ${leftDate}</div>
         </div>
       </div>
 
-      <div class="compare-card found">
+      <div class="compare-card ${isReverse ? 'lost' : 'found'}">
         <div class="compare-card-head">
           <div class="compare-card-title">Rank #${rankLabel} match</div>
-          <span class="pill pill-found">Found</span>
+          <span class="pill ${isReverse ? 'pill-lost' : 'pill-found'}">${isReverse ? 'Lost' : 'Found'}</span>
         </div>
         <div class="compare-img">
           ${imgSrc
-            ? `<img src="${imgSrc}" alt="Found match"/>`
+            ? `<img src="${imgSrc}" alt="Match"/>`
             : `<div class="compare-placeholder">${getCategoryEmoji(selected.category)}<br/>No photo</div>`
           }
         </div>
@@ -909,7 +968,7 @@ function renderMatchView() {
           <div class="compare-meta-name">${getCategoryEmoji(selected.category)} ${selected.category}</div>
           <div class="compare-meta-desc">${selected.description || '—'}</div>
           <div class="compare-meta-line">Where: ${selected.location || '—'}</div>
-          <div class="compare-meta-line">Date: ${selected.date_found || '—'}</div>
+          <div class="compare-meta-line">Date: ${rightDate}</div>
         </div>
       </div>
     </div>
@@ -928,16 +987,15 @@ function renderMatchView() {
         ${conf ? `<span class="confidence-tag ${conf.cls}">${conf.text}</span>` : ''}
       </div>
       <div class="match-img-area">
-        ${imgSrc ? `<img src="${imgSrc}" alt="Found item"/>` : backpackArtHTML()}
+        ${imgSrc ? `<img src="${imgSrc}" alt="Match item"/>` : backpackArtHTML()}
       </div>
       <div class="detail-rows">
         <div class="detail-row"><div class="detail-key">Category</div><div class="detail-val">${getCategoryEmoji(selected.category)} ${selected.category}</div></div>
         <div class="detail-row"><div class="detail-key">Description</div><div class="detail-val">${selected.description || '—'}</div></div>
-        <div class="detail-row"><div class="detail-key">Found at</div><div class="detail-val emerald">${selected.location || '—'}</div></div>
-        <div class="detail-row"><div class="detail-key">Date found</div><div class="detail-val">${selected.date_found || '—'}</div></div>
-        <div class="detail-row"><div class="detail-key">Time found</div><div class="detail-val">${selected.time_found || '—'}</div></div>
-        <div class="detail-row"><div class="detail-key">Currently held at</div><div class="detail-val">Library Information Desk</div></div>
-        <div class="detail-row"><div class="detail-key">Reported by</div><div class="detail-val">${selected.reported_by || '—'}</div></div>
+        <div class="detail-row"><div class="detail-key">${isReverse ? 'Lost at' : 'Found at'}</div><div class="detail-val emerald">${selected.location || '—'}</div></div>
+        <div class="detail-row"><div class="detail-key">${isReverse ? 'Date lost' : 'Date found'}</div><div class="detail-val">${rightDate}</div></div>
+        ${!isReverse ? `<div class="detail-row"><div class="detail-key">Time found</div><div class="detail-val">${selected.time_found || '—'}</div></div>` : ''}
+        <div class="detail-row"><div class="detail-key">Pickup</div><div class="detail-val">Library Information Desk</div></div>
       </div>
       <div class="similarity-section">
         <div class="similarity-title">Similarity breakdown</div>
@@ -951,23 +1009,12 @@ function renderMatchView() {
           ${sameCategory ? '✓ Same category' : '⚠ Different category'}
         </span>
       </div>
-      <div class="finder-strip">
-        <div class="finder-avatar">${initials}</div>
-        <div class="finder-info">
-          <div class="finder-name">${selected.reported_by || 'Anonymous'}</div>
-          <div class="finder-verified">Verified user</div>
-        </div>
-        <button class="btn-contact" id="btn-contact-finder">Contact</button>
-      </div>
     </div>
 
     <div class="action-btns">
-      <button class="btn-emerald" id="btn-this-is-mine" ${claimMessage ? 'disabled' : ''}>
-        ${claimMessage ? 'Claim submitted' : '✓ This is mine — claim rank #' + rankLabel}
-      </button>
-      <button class="btn-secondary" id="btn-not-mine" ${claimMessage ? 'disabled' : ''}>
-        ${safeIndex < matches.length - 1 ? 'Not this one — next ranked →' : 'None of these are mine'}
-      </button>
+      <button class="btn-emerald" id="btn-this-is-mine" ${claimMessage ? 'disabled' : ''}>${primaryBtn}</button>
+      <button class="btn-secondary" id="btn-not-mine" ${claimMessage ? 'disabled' : ''}>${secondaryBtn}</button>
+      ${!isReverse ? '' : '<p class="bottom-note">Accepting notifies the lost owner with your contact. No email is sent until you accept.</p>'}
       <div class="error-banner" id="claim-error">Something went wrong. Please try again.</div>
     </div>
 
@@ -1023,11 +1070,327 @@ function buildEmptyMatchHTML(category, total) {
     </div>`;
 }
 
+function buildClaimEmailTemplate(contact) {
+  const category = contact.category || 'item';
+  const pickup = contact.pickup_point || 'Library Information Desk';
+  const foundLoc = contact.found_location || 'n/a';
+  const lostLoc = contact.lost_location || 'n/a';
+  const owner = contact.owner_email || accountEmail() || 'me';
+  return {
+    subject: `FindIt match accepted — contact for ${category}`,
+    body: [
+      `Match accepted. Status: IN PROCESS.`,
+      '',
+      `Finder: ${contact.finder_name || 'Anonymous'} <${contact.finder_email}>`,
+      `Owner: ${owner}`,
+      `Found location: ${foundLoc}`,
+      `Lost location: ${lostLoc}`,
+      `Suggested meetup: ${pickup}`,
+      '',
+      'Both parties must confirm after a successful exchange.',
+      'Anti-fraud: meet at the desk, verify identity, never send money.',
+    ].join('\n'),
+  };
+}
+
+function openFinderContactModal(contactOverride = null) {
+  const contact = contactOverride || state.match.contact;
+  const root = document.getElementById('contact-modal-root');
+  if (!root) return;
+
+  if (!contact || !contact.finder_email) {
+    root.classList.remove('hidden');
+    root.innerHTML = `
+      <div class="contact-modal-backdrop" id="contact-modal-backdrop">
+        <div class="contact-modal" role="dialog" aria-modal="true" aria-labelledby="contact-modal-title">
+          <div class="contact-modal-title" id="contact-modal-title">Finder contact unavailable</div>
+          <div class="contact-modal-sub">This found item has no email on file. Arrange pickup at the Library Information Desk.</div>
+          <div class="contact-modal-actions">
+            <button type="button" class="btn-secondary" id="btn-close-contact-modal">Close</button>
+          </div>
+        </div>
+      </div>`;
+    root.querySelector('#btn-close-contact-modal')?.addEventListener('click', closeFinderContactModal);
+    root.querySelector('#contact-modal-backdrop')?.addEventListener('click', e => {
+      if (e.target.id === 'contact-modal-backdrop') closeFinderContactModal();
+    });
+    return;
+  }
+
+  const template = buildClaimEmailTemplate(contact);
+  const viaSmtp = contact.mail_mode === 'smtp';
+  const ownerOk = !!contact.owner_mail_sent;
+  const finderOk = !!contact.finder_mail_sent;
+  const statusLine = viaSmtp
+    ? 'Match accepted emails were sent automatically. Status is now in process.'
+    : 'Match accepted emails were saved to the server outbox (add SMTP for live inbox delivery). Status is now in process.';
+
+  root.classList.remove('hidden');
+  root.innerHTML = `
+    <div class="contact-modal-backdrop" id="contact-modal-backdrop">
+      <div class="contact-modal" role="dialog" aria-modal="true" aria-labelledby="contact-modal-title">
+        <div class="contact-modal-title" id="contact-modal-title">Match accepted — in process</div>
+        <div class="contact-modal-sub">${statusLine}</div>
+
+        <div class="contact-detail">
+          <div class="contact-detail-label">Exchange status</div>
+          <div class="contact-detail-value">in_process · waiting for both confirmations</div>
+        </div>
+        <div class="contact-detail">
+          <div class="contact-detail-label">Finder</div>
+          <div class="contact-detail-value">${contact.finder_name || 'Anonymous'} · ${contact.finder_email}</div>
+        </div>
+        <div class="contact-detail">
+          <div class="contact-detail-label">Owner (you)</div>
+          <div class="contact-detail-value">${contact.owner_email || accountEmail() || '—'}</div>
+        </div>
+        <div class="contact-detail">
+          <div class="contact-detail-label">Pickup point</div>
+          <div class="contact-detail-value">${contact.pickup_point || 'Library Information Desk'}</div>
+        </div>
+        <div class="contact-detail">
+          <div class="contact-detail-label">Email delivery</div>
+          <div class="contact-detail-value">${viaSmtp ? 'SMTP' : 'Outbox'} · owner ${ownerOk ? 'sent' : 'failed'} · finder ${finderOk ? 'sent' : 'failed'}</div>
+        </div>
+
+        <div class="contact-detail-label" style="margin-top:12px">What was emailed</div>
+        <div class="contact-template-preview"><strong>Subject:</strong> ${template.subject}\n\n${template.body}</div>
+        <div class="contact-modal-sub" style="margin-top:8px">
+          Safety tip: meet at the Library Information Desk, verify the rightful owner, and never send money.
+        </div>
+        <div id="contact-send-status" class="contact-modal-sub" style="margin:0 0 10px"></div>
+
+        <div class="contact-modal-actions">
+          ${contact.owner_confirm_url || contact.finder_confirm_url
+            ? `<button type="button" class="btn-emerald" id="btn-owner-confirm-exchange">I completed the exchange ✓</button>`
+            : ''
+          }
+          <button type="button" class="btn-secondary" id="btn-send-finder-email">Resend notification emails</button>
+          <button type="button" class="btn-secondary" id="btn-close-contact-modal">Close</button>
+        </div>
+      </div>
+    </div>`;
+
+  root.querySelector('#btn-close-contact-modal')?.addEventListener('click', closeFinderContactModal);
+  root.querySelector('#contact-modal-backdrop')?.addEventListener('click', e => {
+    if (e.target.id === 'contact-modal-backdrop') closeFinderContactModal();
+  });
+  root.querySelector('#btn-send-finder-email')?.addEventListener('click', () => resendCoordinationEmails(contact));
+  root.querySelector('#btn-owner-confirm-exchange')?.addEventListener('click', async () => {
+    const confirmUrl = contact.owner_confirm_url || contact.finder_confirm_url;
+    const token = confirmUrl
+      ? (new URL(confirmUrl, window.location.origin).searchParams.get('confirm')
+        || confirmUrl.split('confirm=')[1])
+      : null;
+    if (!token) return;
+    const statusEl = document.getElementById('contact-send-status');
+    try {
+      const data = await confirmExchangeToken(token);
+      closeFinderContactModal();
+      showExchangeConfirmResult(data);
+      if (data.processed) {
+        state.match.claimMessage = data.message;
+        renderMatchView();
+      }
+    } catch (err) {
+      if (statusEl) statusEl.textContent = err.message || 'Confirm failed.';
+    }
+  });
+}
+
+async function confirmExchangeToken(token) {
+  const res = await fetch(`${API_BASE}/claim/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Confirm failed');
+  return data;
+}
+
+async function handleConfirmQueryParam() {
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('confirm');
+  if (!token) return;
+
+  // Land on the main site immediately, then show exchange status popup.
+  if (auth.token) showView('landing');
+  else showView('login');
+
+  const root = document.getElementById('contact-modal-root');
+  if (root) {
+    root.classList.remove('hidden');
+    root.innerHTML = `
+      <div class="contact-modal-backdrop">
+        <div class="contact-modal">
+          <div class="contact-modal-title">Confirming your exchange…</div>
+          <div class="contact-modal-sub">One moment while we update the claim status.</div>
+        </div>
+      </div>`;
+  }
+
+  try {
+    const data = await confirmExchangeToken(token);
+    showExchangeConfirmResult(data);
+  } catch (err) {
+    showExchangeConfirmResult({
+      error: true,
+      message: err.message || 'Invalid confirmation link.',
+    });
+  } finally {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('confirm');
+    // Keep users on findit.html without the token sticking in the URL.
+    const clean = url.pathname.endsWith('findit.html')
+      ? `${url.pathname}${url.search}${url.hash}`
+      : `/findit.html${url.search}${url.hash}`;
+    window.history.replaceState({}, '', clean);
+  }
+}
+
+function showExchangeConfirmResult(data) {
+  const root = document.getElementById('contact-modal-root');
+  if (!root) return;
+
+  if (data.error) {
+    root.classList.remove('hidden');
+    root.innerHTML = `
+      <div class="contact-modal-backdrop" id="contact-modal-backdrop">
+        <div class="contact-modal" role="dialog" aria-modal="true">
+          <div class="contact-modal-title">Could not confirm</div>
+          <div class="contact-modal-sub">${data.message}</div>
+          <div class="contact-modal-actions">
+            <button type="button" class="btn-secondary" id="btn-close-contact-modal">Back to FindIt</button>
+          </div>
+        </div>
+      </div>`;
+    root.querySelector('#btn-close-contact-modal')?.addEventListener('click', () => {
+      closeFinderContactModal();
+      showView(auth.token ? 'landing' : 'login');
+    });
+    return;
+  }
+
+  const processed = !!data.processed;
+  const ownerDone = !!data.owner_confirmed;
+  const finderDone = !!data.finder_confirmed;
+  const title = processed ? 'Exchange complete' : 'Confirmation saved';
+  const badge = processed
+    ? '<span class="pill pill-found">Processed</span>'
+    : '<span class="pill pill-category">In process</span>';
+  const subtitle = processed
+    ? 'Both parties confirmed. This item is marked processed and will no longer appear in open lost/found matching.'
+    : (data.message || 'Thanks — we recorded your confirmation. Waiting for the other party.');
+
+  root.classList.remove('hidden');
+  root.innerHTML = `
+    <div class="contact-modal-backdrop" id="contact-modal-backdrop">
+      <div class="contact-modal" role="dialog" aria-modal="true">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
+          <div class="contact-modal-title" style="margin:0">${title}</div>
+          ${badge}
+        </div>
+        <div class="contact-modal-sub">${subtitle}</div>
+
+        <div class="contact-detail">
+          <div class="contact-detail-label">You confirmed as</div>
+          <div class="contact-detail-value">${data.role || 'participant'}</div>
+        </div>
+        <div class="contact-detail">
+          <div class="contact-detail-label">Item</div>
+          <div class="contact-detail-value">${data.category || '—'}</div>
+        </div>
+        <div class="contact-detail">
+          <div class="contact-detail-label">Owner confirmation</div>
+          <div class="contact-detail-value">${ownerDone ? '✓ Confirmed' : '⏳ Waiting'}</div>
+        </div>
+        <div class="contact-detail">
+          <div class="contact-detail-label">Finder confirmation</div>
+          <div class="contact-detail-value">${finderDone ? '✓ Confirmed' : '⏳ Waiting'}</div>
+        </div>
+        <div class="contact-detail">
+          <div class="contact-detail-label">Exchange status</div>
+          <div class="contact-detail-value">${data.status || (processed ? 'processed' : 'in_process')}</div>
+        </div>
+
+        <div class="contact-modal-actions">
+          <button type="button" class="btn-emerald" id="btn-close-contact-modal">
+            ${processed ? 'Done — back to FindIt' : 'Got it — waiting for the other party'}
+          </button>
+        </div>
+      </div>
+    </div>`;
+
+  root.querySelector('#btn-close-contact-modal')?.addEventListener('click', () => {
+    closeFinderContactModal();
+    showView(auth.token ? 'landing' : 'login');
+  });
+  root.querySelector('#contact-modal-backdrop')?.addEventListener('click', e => {
+    if (e.target.id === 'contact-modal-backdrop') {
+      closeFinderContactModal();
+      showView(auth.token ? 'landing' : 'login');
+    }
+  });
+}
+
+async function resendCoordinationEmails(contact) {
+  const btn = document.getElementById('btn-send-finder-email');
+  const statusEl = document.getElementById('contact-send-status');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  if (statusEl) statusEl.textContent = '';
+
+  try {
+    const res = await fetch(`${API_BASE}/claim/contact`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        found_item_id: state.match.contact?.found_item_id || contact.found_item_id,
+        lost_item_id: state.match.lostItemId,
+        email: contact.owner_email || accountEmail() || null,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Failed to send email');
+
+    state.match.contact = {
+      ...state.match.contact,
+      ...contact,
+      mail_mode: data.mail_mode,
+      owner_mail_sent: data.owner_mail_sent,
+      finder_mail_sent: data.finder_mail_sent,
+      owner_email: data.owner_email || contact.owner_email,
+      finder_email: data.finder_email || contact.finder_email,
+      finder_name: data.finder_name || contact.finder_name,
+    };
+    if (statusEl) {
+      statusEl.textContent = data.mail_mode === 'smtp'
+        ? 'Notification emails resent.'
+        : 'Saved to server outbox — configure SMTP_HOST for live delivery.';
+    }
+    openFinderContactModal(state.match.contact);
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Resend notification emails'; }
+    if (statusEl) statusEl.textContent = err.message || 'Send failed.';
+  }
+}
+
+function closeFinderContactModal() {
+  const root = document.getElementById('contact-modal-root');
+  if (!root) return;
+  root.classList.add('hidden');
+  root.innerHTML = '';
+}
+
 function bindMatchEvents(selectedMatch, matches) {
   const container = document.getElementById('match-container');
   container.querySelector('#match-back-landing')?.addEventListener('click', () => showView('landing'));
 
   container.querySelector('#btn-this-is-mine')?.addEventListener('click', () => claimCurrentMatch(selectedMatch));
+  container.querySelector('#btn-open-contact')?.addEventListener('click', () => openFinderContactModal());
+  container.querySelector('#btn-contact-finder')?.addEventListener('click', () => {
+    if (state.match.claimMessage && state.match.contact) openFinderContactModal();
+  });
 
   container.querySelector('#btn-not-mine')?.addEventListener('click', () => {
     const next = (state.match.selectedIndex || 0) + 1;
@@ -1070,17 +1433,22 @@ function bindMatchEvents(selectedMatch, matches) {
   });
 }
 
-async function claimCurrentMatch(topMatch) {
+async function claimCurrentMatch(selectedMatch) {
   const btn = document.getElementById('btn-this-is-mine');
   const errEl = document.getElementById('claim-error');
-  if (!topMatch || !state.match.lostItemId) {
+  const isReverse = state.match.direction === 'found_to_lost';
+
+  const foundItemId = isReverse ? state.match.foundItemId : selectedMatch?.id;
+  const lostItemId = isReverse ? selectedMatch?.id : state.match.lostItemId;
+
+  if (!foundItemId || !lostItemId) {
     if (errEl) {
-      errEl.textContent = 'Missing report id. Please re-submit the lost report.';
+      errEl.textContent = 'Missing report id. Please re-submit the report.';
       errEl.classList.add('visible');
     }
     return;
   }
-  if (btn) { btn.disabled = true; btn.textContent = 'Claiming…'; }
+  if (btn) { btn.disabled = true; btn.textContent = isReverse ? 'Accepting match…' : 'Claiming…'; }
   if (errEl) errEl.classList.remove('visible');
 
   try {
@@ -1088,18 +1456,49 @@ async function claimCurrentMatch(topMatch) {
       method: 'POST',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
-        found_item_id: topMatch.id,
-        lost_item_id: state.match.lostItemId,
-        email: state.match.lostForm?.email || accountEmail() || null,
+        found_item_id: foundItemId,
+        lost_item_id: lostItemId,
+        email: isReverse
+          ? (state.match.foundForm?.email || accountEmail() || null)
+          : (state.match.lostForm?.email || accountEmail() || null),
+        initiated_by: isReverse ? 'finder' : 'owner',
       }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || 'Claim failed');
-    state.match.claimMessage = data.message || data.notify_message || 'Claim recorded.';
+    if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : (isReverse ? 'Accept failed' : 'Claim failed'));
+
+    state.match.claimMessage = data.message || data.notify_message || 'Match accepted — in process.';
+    state.match.lostItemId = lostItemId;
+    state.match.foundItemId = foundItemId;
+    state.match.contact = {
+      found_item_id: foundItemId,
+      claim_id: data.id,
+      owner_email: data.owner_email || null,
+      finder_email: data.finder_email || null,
+      finder_name: data.finder_name || null,
+      category: data.category || selectedMatch.category || null,
+      found_location: data.found_location || null,
+      lost_location: data.lost_location || null,
+      pickup_point: data.pickup_point || 'Library Information Desk',
+      mail_mode: data.mail_mode || 'outbox',
+      owner_mail_sent: !!data.owner_mail_sent,
+      finder_mail_sent: !!data.finder_mail_sent,
+      owner_confirm_url: data.owner_confirm_url || null,
+      finder_confirm_url: data.finder_confirm_url || null,
+      owner_confirmed: !!data.owner_confirmed,
+      finder_confirmed: !!data.finder_confirmed,
+      exchange_status: data.exchange_status || data.status || 'in_process',
+    };
     renderMatchView();
+    openFinderContactModal(state.match.contact);
   } catch (err) {
-    const rank = topMatch?.rank || ((state.match.selectedIndex || 0) + 1);
-    if (btn) { btn.disabled = false; btn.textContent = `✓ This is mine — claim rank #${rank}`; }
+    const rank = selectedMatch?.rank || ((state.match.selectedIndex || 0) + 1);
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = isReverse
+        ? `✓ Accept match — notify owner (rank #${rank})`
+        : `✓ This is mine — claim rank #${rank}`;
+    }
     if (errEl) {
       errEl.textContent = err.message || 'Something went wrong. Please try again.';
       errEl.classList.add('visible');
@@ -1164,6 +1563,7 @@ async function openAdminQueue() {
             <div class="admin-card-title">Claim ${item.status}</div>
             <div class="admin-card-body">${item.notify_message || 'No message'}</div>
             <div class="admin-card-meta">${item.claimed_by_email || '—'}</div>
+            <div class="admin-card-meta">Owner ✓ ${item.owner_confirmed ? 'yes' : 'no'} · Finder ✓ ${item.finder_confirmed ? 'yes' : 'no'}</div>
           </div>`)}
       </div>`;
     document.getElementById('admin-back')?.addEventListener('click', () => showView('landing'));
@@ -1180,6 +1580,168 @@ function renderAdminColumn(title, items, renderItem) {
     <div class="admin-column-title">${title} (${items.length})</div>
     ${items.length ? items.map(renderItem).join('') : '<div class="admin-empty">None yet</div>'}
   </div>`;
+}
+
+/* ─────────────────────── MY DASHBOARD ─────────────────────── */
+
+function escapeHTML(str) {
+  return String(str ?? '').replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+function statusPill(status) {
+  const label = (status || 'unknown').replace(/_/g, ' ');
+  return `<span class="status-pill status-${status || 'unknown'}">${escapeHTML(label)}</span>`;
+}
+
+async function openDashboard() {
+  showView('dashboard');
+  const container = document.getElementById('dashboard-container');
+  if (!container) return;
+  container.innerHTML = `
+    <div class="category-loading" style="margin-top:24px">
+      <div class="spinner"></div>
+      <div class="category-loading-text">Loading your items…</div>
+    </div>`;
+
+  try {
+    const res = await fetch(`${API_BASE}/me/dashboard`, { headers: authHeaders() });
+    if (res.status === 401) { showView('login'); return; }
+    if (!res.ok) throw new Error('Failed to load dashboard');
+    const data = await res.json();
+    renderDashboard(data);
+  } catch {
+    container.innerHTML = `
+      <button class="back-link" id="dash-back">← Back</button>
+      <div class="error-banner visible">Could not load your items. Is the API running?</div>`;
+    document.getElementById('dash-back')?.addEventListener('click', () => showView('landing'));
+  }
+}
+
+function renderDashboard(data) {
+  const container = document.getElementById('dashboard-container');
+  if (!container) return;
+
+  const lost = data.lost_items || [];
+  const found = data.found_items || [];
+  const claims = data.claims || [];
+
+  const lostCards = lost.length ? lost.map(item => `
+    <div class="dash-card">
+      <div class="dash-thumb">${item.image_url
+        ? `<img src="${API_BASE}${item.image_url}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:10px"/>`
+        : getCategoryEmoji(item.category)}</div>
+      <div class="dash-body">
+        <div class="dash-card-title">${getCategoryEmoji(item.category)} ${escapeHTML(item.category)}</div>
+        <div class="dash-card-desc">${escapeHTML(item.description || 'No description')}</div>
+        <div class="dash-card-meta">${escapeHTML(item.location || 'Location n/a')} · ${escapeHTML(item.date_lost || '—')}</div>
+        <div class="dash-pills">${statusPill(item.status)}</div>
+      </div>
+    </div>`).join('') : '<div class="admin-empty">You haven\'t reported any lost items yet.</div>';
+
+  const foundCards = found.length ? found.map(item => `
+    <div class="dash-card">
+      <div class="dash-thumb">${item.image_url
+        ? `<img src="${API_BASE}${item.image_url}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:10px"/>`
+        : getCategoryEmoji(item.category)}</div>
+      <div class="dash-body">
+        <div class="dash-card-title">${getCategoryEmoji(item.category)} ${escapeHTML(item.category)}</div>
+        <div class="dash-card-desc">${escapeHTML(item.description || 'No description')}</div>
+        <div class="dash-card-meta">${escapeHTML(item.location || 'Location n/a')} · ${escapeHTML(item.date_found || '—')}</div>
+        <div class="dash-pills">${statusPill(item.status)}</div>
+      </div>
+    </div>`).join('') : '<div class="admin-empty">You haven\'t reported any found items yet.</div>';
+
+  const claimCards = claims.length ? claims.map(claim => {
+    const confirmFlags = `
+      <span class="confirm-flag">Owner ${claim.owner_confirmed ? '<span class="yes">✓</span>' : '<span class="no">pending</span>'}</span>
+      <span class="confirm-flag">Finder ${claim.finder_confirmed ? '<span class="yes">✓</span>' : '<span class="no">pending</span>'}</span>`;
+    const youConfirmed = claim.role === 'owner' ? claim.owner_confirmed : claim.finder_confirmed;
+    const actions = claim.can_cancel ? `
+      <div class="dash-actions">
+        ${!youConfirmed ? `<button type="button" class="btn-confirm-exchange" data-claim-confirm="${claim.id}" data-role="${claim.role}">Confirm exchange done</button>` : ''}
+        <button type="button" class="btn-cancel" data-claim-cancel="${claim.id}">Cancel exchange</button>
+      </div>` : '';
+    return `
+    <div class="dash-card">
+      <div class="dash-thumb">${getCategoryEmoji(claim.category)}</div>
+      <div class="dash-body">
+        <div class="dash-card-title">${getCategoryEmoji(claim.category)} ${escapeHTML(claim.category || 'Item')}</div>
+        <div class="dash-card-meta">You are the <strong>${escapeHTML(claim.role)}</strong> · with ${escapeHTML(claim.counterpart_email || 'unknown')}</div>
+        <div class="dash-pills">${statusPill(claim.status)} ${confirmFlags}</div>
+        ${actions}
+      </div>
+    </div>`;
+  }).join('') : '<div class="admin-empty">No active or past matches yet.</div>';
+
+  container.innerHTML = `
+    <button class="back-link" id="dash-back">← Back</button>
+    <div class="flow-header">
+      <div class="flow-eyebrow">Signed in as ${escapeHTML(data.email || '')}</div>
+      <div class="flow-title">My <span>items</span></div>
+      <p class="flow-subtitle">Your reports and matches. You can cancel an in-process exchange to reopen both items.</p>
+    </div>
+
+    <div class="dash-section">
+      <div class="dash-section-head"><div class="dash-section-title">Active & past matches</div><div class="dash-section-count">${claims.length}</div></div>
+      ${claimCards}
+    </div>
+    <div class="dash-section">
+      <div class="dash-section-head"><div class="dash-section-title">My lost reports</div><div class="dash-section-count">${lost.length}</div></div>
+      ${lostCards}
+    </div>
+    <div class="dash-section">
+      <div class="dash-section-head"><div class="dash-section-title">My found reports</div><div class="dash-section-count">${found.length}</div></div>
+      ${foundCards}
+    </div>`;
+
+  document.getElementById('dash-back')?.addEventListener('click', () => showView('landing'));
+  container.querySelectorAll('[data-claim-cancel]').forEach(btn => {
+    btn.addEventListener('click', () => cancelClaimFromDashboard(btn.dataset.claimCancel, btn));
+  });
+  container.querySelectorAll('[data-claim-confirm]').forEach(btn => {
+    btn.addEventListener('click', () => confirmFromDashboard(btn.dataset.claimConfirm, btn));
+  });
+}
+
+async function cancelClaimFromDashboard(claimId, btn) {
+  if (!claimId) return;
+  if (!window.confirm('Cancel this exchange? Both items will reopen for matching and both parties will be emailed.')) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Cancelling…'; }
+  try {
+    const res = await fetch(`${API_BASE}/claim/cancel`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ claim_id: claimId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Cancel failed');
+    openDashboard();
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Cancel exchange'; }
+    window.alert(err.message || 'Could not cancel this exchange.');
+  }
+}
+
+async function confirmFromDashboard(claimId, btn) {
+  if (!claimId) return;
+  if (!window.confirm('Confirm that you completed this exchange? The item is marked processed once both parties confirm.')) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Confirming…'; }
+  try {
+    const res = await fetch(`${API_BASE}/claim/confirm-auth`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ claim_id: claimId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Confirm failed');
+    window.alert(data.message || 'Confirmation recorded.');
+    openDashboard();
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Confirm exchange done'; }
+    window.alert(err.message || 'Could not confirm this exchange.');
+  }
 }
 
 /* ─────────────────────── AUTH: LOGIN ─────────────────────── */
@@ -1538,6 +2100,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadToken();
   fixButtonTypes();
   renderNav();
+  handleConfirmQueryParam();
 
   document.getElementById('btn-start-lost')?.addEventListener('click', startLostFlow);
   document.getElementById('btn-start-found')?.addEventListener('click', startFoundFlow);
@@ -1548,6 +2111,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('nav-logo-found')?.addEventListener('click', () => showView('landing'));
   document.getElementById('nav-logo-match')?.addEventListener('click', () => showView('landing'));
   document.getElementById('nav-logo-admin')?.addEventListener('click', () => showView('landing'));
+  document.getElementById('nav-logo-dashboard')?.addEventListener('click', () => showView('landing'));
   document.getElementById('nav-logo-login')?.addEventListener('click', () => {
     if (auth.token) showView('landing');
   });
