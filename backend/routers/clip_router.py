@@ -227,6 +227,36 @@ def find_near_duplicate(
     return None
 
 
+# Adaptive result trimming. Different items of the same category (e.g. several
+# power banks) all score fairly high, forming a long tail below the true "leading
+# cluster". These constants keep the leading cluster and drop the tail after a gap.
+MATCH_MIN_KEEP = 3        # correct item is almost always within the top 3
+MATCH_LEAD_MARGIN = 0.08  # beyond top-3, drop anything this far below the #1 score
+MATCH_GAP = 0.035         # ...or where a gap this large opens vs the previous kept item
+MATCH_MAX_KEEP = 12       # hard safety cap
+
+
+def trim_ranked_matches(matches: list[dict]) -> list[dict]:
+    """Keep the leading cluster of a ranked match list and drop the weak tail.
+
+    Always keeps the top MATCH_MIN_KEEP, then keeps further matches only while they
+    stay within MATCH_LEAD_MARGIN of the #1 score and no MATCH_GAP-sized drop opens
+    up. Assumes `matches` is already sorted by descending score."""
+    if len(matches) <= MATCH_MIN_KEEP:
+        return matches
+    top = matches[0]["score"]
+    kept = list(matches[:MATCH_MIN_KEEP])
+    for i in range(MATCH_MIN_KEEP, min(len(matches), MATCH_MAX_KEEP)):
+        cur = matches[i]["score"]
+        prev = matches[i - 1]["score"]
+        if (top - cur) > MATCH_LEAD_MARGIN:
+            break
+        if (prev - cur) > MATCH_GAP:
+            break
+        kept.append(matches[i])
+    return kept
+
+
 def score_lost_against_found(
     *,
     lost_text_embedding: list[float],
@@ -252,11 +282,17 @@ def score_lost_against_found(
         if (found_text is not None and lost_image_embedding is not None)
         else None
     )
+    text_to_text = (
+        cosine_similarity(lost_text_embedding, found_text)
+        if (found_text is not None and lost_text_embedding is not None)
+        else None
+    )
 
     final_score, tier, same_category, scores_breakdown = compute_match(
         text_to_image=text_to_image,
         image_to_image=image_to_image,
         found_text_to_lost_image=found_text_to_lost_image,
+        text_to_text=text_to_text,
         lost_category=lost_category,
         found_category=found.category,
         lost_location=lost_location,
@@ -404,6 +440,7 @@ async def report_found_item(
     ranked_matches.sort(key=lambda m: m["score"], reverse=True)
     for index, match in enumerate(ranked_matches, start=1):
         match["rank"] = index
+    ranked_matches = trim_ranked_matches(ranked_matches)
 
     top_breakdown = (
         ranked_matches[0]["scores_breakdown"]
@@ -549,6 +586,7 @@ async def report_lost_item(
     ranked_matches.sort(key=lambda match: match["score"], reverse=True)
     for index, match in enumerate(ranked_matches, start=1):
         match["rank"] = index
+    ranked_matches = trim_ranked_matches(ranked_matches)
 
     top_breakdown = (
         ranked_matches[0]["scores_breakdown"]

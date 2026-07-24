@@ -8,15 +8,17 @@
 const API_BASE = 'http://localhost:8000';
 
 const CATEGORIES = [
-  { name: 'Backpack / Bag',  emoji: '🎒' },
-  { name: 'Electronics',     emoji: '📱' },
-  { name: 'Wallet / Purse',  emoji: '👛' },
-  { name: 'Keys',            emoji: '🔑' },
-  { name: 'Umbrella',        emoji: '☂️' },
-  { name: 'Glasses',         emoji: '👓' },
-  { name: 'Water Bottle',    emoji: '💧' },
-  { name: 'Clothing',        emoji: '👕' },
-  { name: 'Other',           emoji: '📦' },
+  { name: 'Backpack / Bag',     emoji: '🎒' },
+  { name: 'Gadgets',            emoji: '📱' },
+  { name: 'Gadget Accessories', emoji: '🎧' },
+  { name: 'Electronics',        emoji: '🔌' },
+  { name: 'School Supplies',    emoji: '✏️' },
+  { name: 'Wallet / Purse',     emoji: '👛' },
+  { name: 'Umbrella',           emoji: '☂️' },
+  { name: 'Glasses',            emoji: '👓' },
+  { name: 'Water Bottle',       emoji: '💧' },
+  { name: 'Clothing',           emoji: '👕' },
+  { name: 'Other',              emoji: '📦' },
 ];
 
 /* ── STATE ── */
@@ -235,8 +237,13 @@ function stepsHTML(steps, current) {
 }
 
 function categoryPillsHTML(selected, scores) {
+  // Rank by AI confidence when available, but always keep Other at the bottom.
   const list = scores
-    ? [...CATEGORIES].sort((a, b) => (scores[b.name] || 0) - (scores[a.name] || 0))
+    ? [...CATEGORIES].sort((a, b) => {
+        if (a.name === 'Other') return 1;
+        if (b.name === 'Other') return -1;
+        return (scores[b.name] || 0) - (scores[a.name] || 0);
+      })
     : CATEGORIES;
   return list.map(c => {
     const sel   = c.name === selected ? 'selected' : '';

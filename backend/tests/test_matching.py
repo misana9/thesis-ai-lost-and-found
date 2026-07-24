@@ -57,7 +57,7 @@ def test_compute_match_discards_weak_cross_category():
         text_to_image=0.70,
         image_to_image=None,
         found_text_to_lost_image=None,
-        lost_category="Keys",
+        lost_category="Gadgets",
         found_category="Electronics",
     )
     assert same is False
@@ -72,8 +72,8 @@ def test_compute_match_keeps_possible_same_category():
         text_to_image=0.70,
         image_to_image=None,
         found_text_to_lost_image=None,
-        lost_category="Keys",
-        found_category="Keys",
+        lost_category="Gadgets",
+        found_category="Gadgets",
     )
     assert same is True
     assert approx(score, min(0.70 * 1.10, 0.99))

@@ -19,7 +19,10 @@ services:
       - POSTGRES_PASSWORD=password123
       - POSTGRES_DB=lost_and_found
     volumes:
-      - postgres-db:/var/lib/postgresql
+      # Must mount at PGDATA (/var/lib/postgresql/data). Mounting the parent
+      # lets Docker create an anonymous volume for /data that is discarded on
+      # container recreate — wiping the DB every restart.
+      - postgres-db:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:

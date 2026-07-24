@@ -46,7 +46,7 @@ def make_pair(seed: int, category: str, shared: float) -> tuple[dict, dict]:
 
 def distractor(seed: int, lost_category: str) -> dict:
     rng = random.Random(seed + 999)
-    cats = ["Electronics", "Keys", "Clothing", "Umbrella", "Other", "Wallet / Purse"]
+    cats = ["Gadgets", "Electronics", "Clothing", "Umbrella", "Wallet / Purse", "Other"]
     category = rng.choice([c for c in cats if c != lost_category] or cats)
     low = rng.uniform(0.35, 0.62)
     return {
@@ -86,13 +86,15 @@ def rank_query(lost: dict, candidates: list[dict]) -> list[dict]:
 def main() -> None:
     categories = [
         "Backpack / Bag",
+        "Gadgets",
+        "Gadget Accessories",
         "Electronics",
-        "Keys",
         "Water Bottle",
         "Glasses",
         "Wallet / Purse",
         "Clothing",
         "Umbrella",
+        "Other",
     ]
     p_at_1 = 0
     recall_at_3 = 0

@@ -9,6 +9,15 @@ def adaptive_raw_score(
     image_to_image: float | None,
     found_text_to_lost_image: float | None,
 ) -> float:
+    """Combine available similarity signals into a single raw score.
+
+    Uses the low-magnitude cross-modal text-vs-image cosines rather than a direct
+    description-to-description (text-to-text) term on purpose: text-to-text is a
+    category-level signal (two different calculators both described "calculator"
+    score ~1.0), so adding it floods results with same-category look-alikes. The
+    cross-modal terms keep same-category clutter low while the image term drives
+    same-item ranking.
+    """
     if image_to_image is not None and text_to_image is not None:
         base = image_to_image * 0.60 + text_to_image * 0.25
         if found_text_to_lost_image is not None:
@@ -95,6 +104,7 @@ def compute_match(
     text_to_image: float | None,
     image_to_image: float | None,
     found_text_to_lost_image: float | None,
+    text_to_text: float | None = None,
     lost_category: str,
     found_category: str,
     lost_location: str | None = None,
@@ -102,7 +112,11 @@ def compute_match(
     lost_date: str | None = None,
     found_date: str | None = None,
 ) -> tuple[float, str | None, bool, dict[str, float | None]]:
-    raw_score = adaptive_raw_score(text_to_image, image_to_image, found_text_to_lost_image)
+    # text_to_text is retained for the score breakdown (informational) but is not
+    # fed into the score: it inflates same-category matches and floods results.
+    raw_score = adaptive_raw_score(
+        text_to_image, image_to_image, found_text_to_lost_image
+    )
     same_category = lost_category == found_category
     final_score = apply_category_multiplier(raw_score, same_category)
     final_score = min(
@@ -116,5 +130,6 @@ def compute_match(
         "text_to_image": text_to_image,
         "image_to_image": image_to_image,
         "found_text_to_lost_image": found_text_to_lost_image,
+        "text_to_text": text_to_text,
     }
     return final_score, tier, same_category, breakdown

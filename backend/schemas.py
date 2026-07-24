@@ -68,6 +68,7 @@ class ScoresBreakdown(BaseModel):
     text_to_image: float | None = None
     image_to_image: float | None = None
     found_text_to_lost_image: float | None = None
+    text_to_text: float | None = None
 
 
 class MatchItem(BaseModel):
