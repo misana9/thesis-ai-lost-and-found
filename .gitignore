@@ -3,3 +3,5 @@ __pycache__
 node_modules
 backend/mail_outbox/
 backend/uploads/
+Objects
+manuscript

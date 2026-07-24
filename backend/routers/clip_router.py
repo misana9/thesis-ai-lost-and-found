@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from categories import CATEGORIES
 from clip_service import cosine_similarity, encode_pil_image, encode_text, predict_category
+from validation import validate_item_description
 from config import settings
 from database import get_db
 from email_service import (
@@ -345,6 +346,11 @@ async def report_found_item(
     if category not in CATEGORIES:
         raise HTTPException(status_code=400, detail=f"Invalid category. Must be one of: {', '.join(CATEGORIES)}")
 
+    try:
+        description = validate_item_description(description, required=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     email = resolve_uploader_email(finder_email, current_user)
 
     try:
@@ -493,6 +499,11 @@ async def report_lost_item(
             status_code=400,
             detail=f"Invalid category. Must be one of: {', '.join(CATEGORIES)}",
         )
+
+    try:
+        description = validate_item_description(description, required=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     owner_email = resolve_uploader_email(email, current_user)
 

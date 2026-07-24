@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from config import settings
+from email_service import mail_delivery_mode, notify_email_verification
 import schemas
 import utils
 import oauth2
@@ -28,6 +29,22 @@ def build_user_token(user: models.Users) -> str:
             "email_verified": bool(user.email_verified),
         },
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+
+
+def verification_link(token: str) -> str:
+    base = (settings.frontend_base_url or "http://localhost:3000").rstrip("/")
+    # Frontend opens findit.html and handles ?verify_token=
+    if base.endswith(".html"):
+        return f"{base}?verify_token={token}"
+    return f"{base}/findit.html?verify_token={token}"
+
+
+def send_verification_mail(user: models.Users, token: str) -> dict:
+    return notify_email_verification(
+        to_email=user.email,
+        name=user.full_name,
+        verify_url=verification_link(token),
     )
 
 
@@ -58,10 +75,54 @@ async def register(body: schemas.AuthRegisterRequest, db: Session = Depends(get_
     db.commit()
     db.refresh(new_user)
 
-    # Prototype: no real email sender — expose a verify URL for local testing.
+    mail_meta = send_verification_mail(new_user, verify_token)
+    verify_url = verification_link(verify_token)
+
     return {
-        "message": "Registration successful. Please verify your email.",
-        "dev_verify_url": f"http://localhost:8000/auth/verify?token={verify_token}",
+        "message": (
+            "Registration successful. Check your email for a verification link "
+            "before signing in."
+        ),
+        "email": new_user.email,
+        "mail_sent": bool(mail_meta.get("sent")),
+        "mail_mode": mail_meta.get("mode") or mail_delivery_mode(),
+        "dev_verify_url": verify_url,
+    }
+
+
+@router.post("/resend-verification", response_model=schemas.AuthRegisterResponse)
+async def resend_verification(
+    body: schemas.AuthResendVerificationRequest,
+    db: Session = Depends(get_db),
+):
+    """Resend the verification email. Always returns a generic message to avoid
+    leaking whether an address is registered."""
+    email = body.email.strip().lower()
+    user = oauth2.get_user(db, email)
+    generic = {
+        "message": (
+            "If that email is registered and still unverified, "
+            "a new verification link has been sent."
+        ),
+        "email": email,
+        "mail_sent": False,
+        "mail_mode": mail_delivery_mode(),
+        "dev_verify_url": None,
+    }
+    if not user or user.email_verified:
+        return generic
+
+    verify_token = secrets.token_urlsafe(32)
+    user.email_verification_token = verify_token
+    db.commit()
+    db.refresh(user)
+
+    mail_meta = send_verification_mail(user, verify_token)
+    return {
+        **generic,
+        "mail_sent": bool(mail_meta.get("sent")),
+        "mail_mode": mail_meta.get("mode") or mail_delivery_mode(),
+        "dev_verify_url": verification_link(verify_token),
     }
 
 

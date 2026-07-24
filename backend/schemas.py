@@ -23,7 +23,16 @@ class AuthRegisterRequest(BaseModel):
 
 class AuthRegisterResponse(BaseModel):
     message: str
+    email: str | None = None
+    mail_sent: bool = False
+    mail_mode: str | None = None
+    # Local/demo fallback when SMTP is unavailable (also returned after successful send
+    # so thesis demos can still open the link without digging through Gmail).
     dev_verify_url: str | None = None
+
+
+class AuthResendVerificationRequest(BaseModel):
+    email: str
 
 
 class AuthVerifyResponse(BaseModel):

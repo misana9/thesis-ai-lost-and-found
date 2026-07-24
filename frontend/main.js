@@ -65,6 +65,8 @@ const state = {
   register: {
     successEmail: null,
     verifyUrl: null,
+    mailMode: null,
+    mailSent: false,
   },
 };
 
@@ -208,6 +210,28 @@ function showView(name) {
 function getCategoryEmoji(name) {
   const cat = CATEGORIES.find(c => c.name === name);
   return cat ? cat.emoji : '📦';
+}
+
+const VAGUE_DESC_WORDS = new Set([
+  'item', 'items', 'thing', 'things', 'stuff', 'object', 'objects',
+  'lost', 'found', 'something', 'someone', 'misc', 'miscellaneous',
+  'n/a', 'na', 'none', 'test', 'asdf', 'xxx',
+]);
+
+function descriptionValidationError(text) {
+  const cleaned = (text || '').trim().replace(/\s+/g, ' ');
+  if (!cleaned) {
+    return 'Please add a short description (color, brand, marks, or other details).';
+  }
+  const tokens = cleaned.toLowerCase().match(/[a-z0-9]+/g) || [];
+  if (cleaned.length < 8 || tokens.length < 2) {
+    return 'Description is too short. Add a couple of details (e.g. “black Casio calculator with cracked case”).';
+  }
+  const meaningful = tokens.filter(t => !VAGUE_DESC_WORDS.has(t));
+  if (!meaningful.length || tokens.every(t => VAGUE_DESC_WORDS.has(t))) {
+    return 'Description is too vague. Add distinctive details (color, brand, model, scratches, stickers…).';
+  }
+  return null;
 }
 
 function backpackArtHTML() {
@@ -457,7 +481,8 @@ function bindLostEvents(s) {
     state.lost.location    = document.getElementById('lost-location').value.trim();
     state.lost.dateLost    = document.getElementById('lost-date').value.trim();
     state.lost.email       = document.getElementById('lost-email').value.trim().toLowerCase();
-    if (!state.lost.description) { alert('Please enter a description.'); return; }
+    const descErr = descriptionValidationError(state.lost.description);
+    if (descErr) { alert(descErr); return; }
     if (!isValidEmail(state.lost.email)) { alert('Please enter a valid email so we can notify you.'); return; }
     state.lost.step = 'review';
     renderLostStep();
@@ -569,8 +594,9 @@ function buildFoundHTML(s) {
       <div class="form-card">
         <div class="form-section-label">Item details</div>
         <div class="field">
-          <label for="found-desc">Description <span style="color:#94A3B8;font-weight:400">(optional)</span></label>
-          <textarea id="found-desc" placeholder="e.g. Black backpack with red zipper…">${s.description}</textarea>
+          <label for="found-desc">Description</label>
+          <textarea id="found-desc" placeholder="e.g. Black iPhone 13 with cracked screen protector…">${s.description}</textarea>
+          <p class="bottom-note" style="margin-top:6px">Required — color, brand, marks, or other details (anti-fraud matching).</p>
         </div>
         <div class="row-2">
           <div class="field">
@@ -755,9 +781,19 @@ async function submitFoundReport() {
     return;
   }
 
+  const descErr = descriptionValidationError(s.description);
+  if (descErr) {
+    if (btn)   { btn.disabled = false; btn.textContent = 'Submit found item →'; }
+    if (errEl) {
+      errEl.textContent = descErr;
+      errEl.classList.add('visible');
+    }
+    return;
+  }
+
   const fd = new FormData();
   fd.append('image', s.imageFile);
-  if (s.description) fd.append('description', s.description);
+  fd.append('description', s.description);
   fd.append('category', s.category);
   if (s.location)  fd.append('location', s.location);
   if (s.dateFound) fd.append('date_found', s.dateFound);
@@ -1214,6 +1250,72 @@ async function confirmExchangeToken(token) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Confirm failed');
   return data;
+}
+
+async function handleVerifyQueryParam() {
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('verify_token');
+  if (!token) return;
+
+  showView('login');
+  const root = document.getElementById('contact-modal-root');
+  if (root) {
+    root.classList.remove('hidden');
+    root.innerHTML = `
+      <div class="contact-modal-backdrop">
+        <div class="contact-modal">
+          <div class="contact-modal-title">Verifying your email…</div>
+          <div class="contact-modal-sub">One moment while we activate your account.</div>
+        </div>
+      </div>`;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/auth/verify?token=${encodeURIComponent(token)}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Verification failed');
+    if (root) {
+      root.innerHTML = `
+        <div class="contact-modal-backdrop">
+          <div class="contact-modal">
+            <div class="contact-modal-title">Email verified</div>
+            <div class="contact-modal-sub">${escapeHTML(data.message || 'You can sign in now.')}</div>
+            <button type="button" class="btn-primary" id="verify-modal-close">Continue to sign in</button>
+          </div>
+        </div>`;
+      root.querySelector('#verify-modal-close')?.addEventListener('click', () => {
+        root.classList.add('hidden');
+        root.innerHTML = '';
+        showView('login');
+      });
+    } else {
+      window.alert(data.message || 'Email verified. You can sign in now.');
+    }
+  } catch (err) {
+    if (root) {
+      root.innerHTML = `
+        <div class="contact-modal-backdrop">
+          <div class="contact-modal">
+            <div class="contact-modal-title">Verification failed</div>
+            <div class="contact-modal-sub">${escapeHTML(err.message || 'Invalid or expired link.')}</div>
+            <button type="button" class="btn-primary" id="verify-modal-close">Close</button>
+          </div>
+        </div>`;
+      root.querySelector('#verify-modal-close')?.addEventListener('click', () => {
+        root.classList.add('hidden');
+        root.innerHTML = '';
+      });
+    } else {
+      window.alert(err.message || 'Verification failed.');
+    }
+  } finally {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('verify_token');
+    const clean = url.pathname.endsWith('findit.html')
+      ? `${url.pathname}${url.search}${url.hash}`
+      : `/findit.html${url.search}${url.hash}`;
+    window.history.replaceState({}, '', clean);
+  }
 }
 
 async function handleConfirmQueryParam() {
@@ -1938,18 +2040,25 @@ async function submitLogin() {
 
 function buildRegisterHTML() {
   if (state.register.successEmail) {
+    const modeNote = state.register.mailMode === 'outbox'
+      ? 'Dev mode: email was written to the server outbox (SMTP not used).'
+      : state.register.mailSent
+        ? 'A verification email is on its way — check inbox and spam.'
+        : 'We tried to send a verification email. If it does not arrive, use the link below or resend.';
     return `
       <div class="auth-logo" id="register-brand-logo">Find<span>It</span></div>
       <div class="success-state">
         <div class="success-check">✓</div>
         <div class="success-title">Check your email</div>
-        <div class="success-sub">We sent a verification link to ${state.register.successEmail}. You must verify before signing in.</div>
-        <p class="bottom-note" style="margin-bottom:20px">Didn't get it? Check your spam folder.</p>
+        <div class="success-sub">We sent a verification link to <strong>${escapeHTML(state.register.successEmail)}</strong>. You must verify before signing in.</div>
+        <p class="bottom-note" style="margin-bottom:16px">${modeNote}</p>
+        <button type="button" class="btn-primary" id="btn-resend-verify" style="margin-bottom:12px">Resend verification email</button>
         ${state.register.verifyUrl ? `
-          <p class="bottom-note" style="margin-bottom:12px">Prototype: open this verify link</p>
-          <button type="button" class="btn-primary" id="btn-open-verify" style="margin-bottom:16px">Verify email →</button>
+          <p class="bottom-note" style="margin-bottom:12px">Demo fallback — open verify link directly:</p>
+          <button type="button" class="btn-text" id="btn-open-verify" style="margin-bottom:16px">Verify email →</button>
         ` : ''}
         <button type="button" class="btn-text" id="btn-register-to-login">Back to sign in</button>
+        <div class="error-banner" id="register-error" style="margin-top:14px"></div>
       </div>
     `;
   }
@@ -2004,16 +2113,21 @@ function bindRegisterEvents() {
   el.querySelector('#btn-goto-login')?.addEventListener('click', () => {
     state.register.successEmail = null;
     state.register.verifyUrl = null;
+    state.register.mailMode = null;
+    state.register.mailSent = false;
     showView('login');
   });
   el.querySelector('#btn-register-to-login')?.addEventListener('click', () => {
     state.register.successEmail = null;
     state.register.verifyUrl = null;
+    state.register.mailMode = null;
+    state.register.mailSent = false;
     showView('login');
   });
   el.querySelector('#btn-open-verify')?.addEventListener('click', () => {
     if (state.register.verifyUrl) window.open(state.register.verifyUrl, '_blank');
   });
+  el.querySelector('#btn-resend-verify')?.addEventListener('click', () => resendVerificationEmail());
   el.querySelector('#btn-register-submit')?.addEventListener('click', () => submitRegister());
 
   const passwordInput = el.querySelector('#register-password');
@@ -2030,6 +2144,35 @@ function bindRegisterEvents() {
       label.className = `strength-label ${strength.color}`;
     }
   });
+}
+
+async function resendVerificationEmail() {
+  const email = state.register.successEmail;
+  const errEl = document.getElementById('register-error');
+  const btn = document.getElementById('btn-resend-verify');
+  if (!email) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  errEl?.classList.remove('visible');
+  try {
+    const res = await fetch(`${API_BASE}/auth/resend-verification`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(apiErrorMessage(data, 'Could not resend verification'));
+    state.register.verifyUrl = data.dev_verify_url || state.register.verifyUrl;
+    state.register.mailMode = data.mail_mode || state.register.mailMode;
+    state.register.mailSent = !!data.mail_sent;
+    renderRegister();
+    window.alert(data.message || 'Verification email resent.');
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Resend verification email'; }
+    if (errEl) {
+      errEl.textContent = err.message || 'Could not resend verification.';
+      errEl.classList.add('visible');
+    }
+  }
 }
 
 async function submitRegister() {
@@ -2091,6 +2234,8 @@ async function submitRegister() {
 
     state.register.successEmail = email;
     state.register.verifyUrl = data.dev_verify_url || null;
+    state.register.mailMode = data.mail_mode || null;
+    state.register.mailSent = !!data.mail_sent;
     renderRegister();
   } catch (err) {
     if (btn) { btn.disabled = false; btn.textContent = 'Create account →'; }
@@ -2107,6 +2252,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadToken();
   fixButtonTypes();
   renderNav();
+  handleVerifyQueryParam();
   handleConfirmQueryParam();
 
   document.getElementById('btn-start-lost')?.addEventListener('click', startLostFlow);

@@ -202,6 +202,37 @@ def send_email(
     return meta
 
 
+def notify_email_verification(*, to_email: str, name: str | None, verify_url: str) -> dict:
+    display_name = (name or "").strip() or "there"
+    text_body = (
+        f"Hi {display_name},\n\n"
+        f"Welcome to FindIt — AMA University's campus lost & found.\n\n"
+        f"Please verify your email to activate your account:\n"
+        f"{verify_url}\n\n"
+        f"If you did not create this account, you can ignore this message.\n\n"
+        f"— FindIt Campus Lost & Found\n"
+    )
+    html_body = _wrap_html(
+        title="Verify your FindIt email",
+        eyebrow="Account verification",
+        body_html=(
+            f"<p>Hi {escape(display_name)},</p>"
+            f"<p>Welcome to FindIt. Confirm your email to activate your account and start "
+            f"reporting lost or found items.</p>"
+            f"<p style='margin-top:14px;color:#64748B;font-size:13px;'>"
+            f"If you did not create this account, you can ignore this message.</p>"
+        ),
+        cta_url=verify_url,
+        cta_label="Verify email",
+    )
+    return send_email(
+        to_email,
+        "Verify your FindIt account",
+        text_body,
+        html_body=html_body,
+    )
+
+
 def notify_match_to_owner(*, owner_email: str, category: str, match_count: int, top_score: float | None) -> dict:
     score_text = f"{top_score:.0%}" if top_score is not None else "n/a"
     text_body = (
