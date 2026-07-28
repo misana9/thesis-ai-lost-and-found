@@ -1,0 +1,197 @@
+{
+  "tag": "088250",
+  "items": [
+    {
+      "label": "calculator/1_calculator",
+      "id": "55da7fb6-fc01-4b59-84bd-6d670408b692",
+      "location": "Registrar Office",
+      "category": "School Supplies"
+    },
+    {
+      "label": "calculator/2_calculator",
+      "id": "ac483a88-209a-4bb0-ae1c-f959de490809",
+      "location": "Faculty",
+      "category": "School Supplies"
+    },
+    {
+      "label": "calculator/3_calculator",
+      "id": "5f61ac75-e501-44f7-9a14-2635b44be7ac",
+      "location": "Library",
+      "category": "School Supplies"
+    },
+    {
+      "label": "earphone/1_earphone",
+      "id": "36622ab2-6202-4499-9154-7e5efe4fb0ac",
+      "location": "Room 401",
+      "category": "Gadget Accessories"
+    },
+    {
+      "label": "earphone/2_earphone",
+      "id": "4d0f9cb3-306f-49b2-9672-d9bada6a2ea8",
+      "location": "Room 402",
+      "category": "Gadget Accessories"
+    },
+    {
+      "label": "earphone/3_earphone",
+      "id": "67c216cb-bbc4-4f56-a153-edb898b34136",
+      "location": "Room 403",
+      "category": "Gadget Accessories"
+    },
+    {
+      "label": "id/1_id",
+      "id": "20cf7f3f-70e2-4b69-9cef-de519956c1e9",
+      "location": "Room 404",
+      "category": "Other"
+    },
+    {
+      "label": "id/2_id",
+      "id": "8b2184f5-fd60-4323-9947-b0e3708387c3",
+      "location": "Room 405",
+      "category": "Other"
+    },
+    {
+      "label": "ipad/1_ipad",
+      "id": "e0282f99-4514-45f5-a778-22b840fcc731",
+      "location": "Room 406",
+      "category": "Gadgets"
+    },
+    {
+      "label": "ipad/2_ipad",
+      "id": "6f8dd2ae-6215-4c1d-b4b3-7a0df1af1278",
+      "location": "Room 407",
+      "category": "Gadgets"
+    },
+    {
+      "label": "ipad/3_ipad",
+      "id": "ae01f18e-d880-4c8e-8e99-4d5700e60bec",
+      "location": "Room 408",
+      "category": "Gadgets"
+    },
+    {
+      "label": "key/1_key",
+      "id": "9fd72c70-d97e-493a-8c5f-4d405d0a95d9",
+      "location": "Room 409",
+      "category": "Other"
+    },
+    {
+      "label": "key/2_key",
+      "id": "c488c550-9cd7-4f07-9743-e13fe529a9a6",
+      "location": "Room 410",
+      "category": "Other"
+    },
+    {
+      "label": "key/3_key",
+      "id": "2805255e-7fcb-4ee6-83ae-cd4bfdcf07d2",
+      "location": "Registrar Office",
+      "category": "Other"
+    },
+    {
+      "label": "minifan/1_minifan",
+      "id": "2a1d691e-9645-4afa-aa95-1b003dd55b94",
+      "location": "Faculty",
+      "category": "Electronics"
+    },
+    {
+      "label": "minifan/2_minifan",
+      "id": "bf938664-e906-44b8-bd2c-40e6694c7140",
+      "location": "Library",
+      "category": "Electronics"
+    },
+    {
+      "label": "minifan/3_minifan",
+      "id": "0b9859c8-c61a-4d57-a4a8-38198c7c7a32",
+      "location": "Room 401",
+      "category": "Electronics"
+    },
+    {
+      "label": "pen/1_pen",
+      "id": "30626c1e-bf02-40e5-9721-f7894f02f490",
+      "location": "Room 402",
+      "category": "School Supplies"
+    },
+    {
+      "label": "pen/2_pen",
+      "id": "b3e843d6-912d-4e32-8084-359c072ee8a1",
+      "location": "Room 403",
+      "category": "School Supplies"
+    },
+    {
+      "label": "pen/3_pen",
+      "id": "128af4cb-6d70-4f1b-9b5b-1e8e5e0a0488",
+      "location": "Room 404",
+      "category": "School Supplies"
+    },
+    {
+      "label": "phone/1_phone",
+      "id": "a6852678-1c48-40f5-b2cf-dc28a143fd29",
+      "location": "Room 405",
+      "category": "Gadgets"
+    },
+    {
+      "label": "phone/2_phone",
+      "id": "d3e92ffb-e0ec-44fe-9cbf-06d263c95a8e",
+      "location": "Room 406",
+      "category": "Gadgets"
+    },
+    {
+      "label": "phone/3_phone",
+      "id": "2d93377c-9ec3-41ce-8390-687e7896bae1",
+      "location": "Room 407",
+      "category": "Gadgets"
+    },
+    {
+      "label": "powerbank/1_powerbank",
+      "id": "c284c529-f534-40cf-984e-ed0f88c64578",
+      "location": "Room 408",
+      "category": "Gadget Accessories"
+    },
+    {
+      "label": "powerbank/2_powerbank",
+      "id": "6f03c337-cf4a-44f8-9335-a2a7a5338836",
+      "location": "Room 409",
+      "category": "Gadget Accessories"
+    },
+    {
+      "label": "powerbank/3_powerbank",
+      "id": "78d17f96-25b8-4c9c-a0d5-bfe7b7fc32fb",
+      "location": "Room 410",
+      "category": "Gadget Accessories"
+    },
+    {
+      "label": "tumbler/1_tumbler",
+      "id": "f508d258-040c-4d91-92e8-5044ddb6a6c1",
+      "location": "Registrar Office",
+      "category": "Water Bottle"
+    },
+    {
+      "label": "tumbler/2_tumbler",
+      "id": "dd8f7508-7099-4a9b-9584-3e5f4fc10b04",
+      "location": "Faculty",
+      "category": "Water Bottle"
+    },
+    {
+      "label": "tumbler/3_tumbler",
+      "id": "db1e7d92-6919-4c03-b98d-bc8378b74337",
+      "location": "Library",
+      "category": "Water Bottle"
+    },
+    {
+      "label": "wallet/1_wallet",
+      "id": "006aa75b-63f0-4e11-8dcd-40dd3f00952b",
+      "location": "Room 401",
+      "category": "Wallet / Purse"
+    },
+    {
+      "label": "wallet/2_wallet",
+      "id": "ba4cff12-4dfc-4273-9b1f-2560d35292f3",
+      "location": "Room 402",
+      "category": "Wallet / Purse"
+    },
+    {
+      "label": "wallet/3_wallet",
+      "id": "d9bf5669-fcf8-4282-ade8-a101474c4380",
+      "location": "Room 403",
+      "category": "Wallet / Purse"
+    }
+  ]
+}

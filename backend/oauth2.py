@@ -52,7 +52,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     return verify_access_token(token, credentials_exception)
 
 
-def get_user_by_token_data(db: Session, token_data: schemas.tokenData) -> models.Users | None:
+def user_from_token(db: Session, token_data: schemas.tokenData) -> models.Users | None:
     return db.query(models.Users).filter(models.Users.id == token_data.id).first()
 
 
@@ -69,7 +69,7 @@ def get_optional_user(
         )
     except HTTPException:
         return None
-    return get_user_by_token_data(db, token_data)
+    return user_from_token(db, token_data)
 
 
 def get_admin_user(
@@ -82,7 +82,7 @@ def get_admin_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     token_data = verify_access_token(token, credentials_exception)
-    user = get_user_by_token_data(db, token_data)
+    user = user_from_token(db, token_data)
     if not user or not user.is_admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return user

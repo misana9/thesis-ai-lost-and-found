@@ -1,4 +1,4 @@
-"""Upload one found + one lost (diff angle) per Objects instance; report rank-1 accuracy."""
+# one found + one lost (diff angle) per Objects instance → rank-1 accuracy
 from __future__ import annotations
 
 import json

@@ -45,11 +45,48 @@ def test_tiers():
 
 
 def test_location_and_time_boosts():
+    assert location_boost("Library", "Library") == 0.06
+    assert location_boost("Library | Room 401", "Room 401") == 0.06
+    assert location_boost("Library | Room 401", "Faculty") == 0.0
+    assert location_boost("Library", "Library", apply_boost=False) == 0.0
     assert location_boost("Main Library Floor 2", "Main Library, Floor 2") > 0
     assert location_boost("Engineering Building", "Student Canteen") == 0.0
     assert time_boost("2026-06-11", "2026-06-11") == 0.03
     assert time_boost("2026-06-11", "2026-06-13") == 0.02
     assert time_boost("June 11, 2026", "2026-06-11") == 0.03
+
+
+def test_compute_match_location_boost_raises_score():
+    base, _, _, _ = compute_match(
+        text_to_image=0.70,
+        image_to_image=None,
+        found_text_to_lost_image=None,
+        lost_category="Gadgets",
+        found_category="Gadgets",
+        lost_location="Library",
+        found_location="Faculty",
+    )
+    boosted, _, _, _ = compute_match(
+        text_to_image=0.70,
+        image_to_image=None,
+        found_text_to_lost_image=None,
+        lost_category="Gadgets",
+        found_category="Gadgets",
+        lost_location="Library | Faculty",
+        found_location="Faculty",
+    )
+    assert boosted > base
+    bypassed, _, _, _ = compute_match(
+        text_to_image=0.70,
+        image_to_image=None,
+        found_text_to_lost_image=None,
+        lost_category="Gadgets",
+        found_category="Gadgets",
+        lost_location="Library | Faculty",
+        found_location="Faculty",
+        apply_location_boost=False,
+    )
+    assert approx(bypassed, base)
 
 
 def test_compute_match_discards_weak_cross_category():

@@ -1,9 +1,9 @@
 from io import BytesIO
 
 from fastapi import HTTPException, UploadFile
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, UnidentifiedImageError
 
-MAX_UPLOAD_BYTES = 8 * 1024 * 1024  # 8 MB
+MAX_UPLOAD_BYTES = 8 * 1024 * 1024
 MAX_IMAGE_EDGE = 1024
 
 
@@ -21,7 +21,7 @@ async def read_and_sanitize_image(upload: UploadFile) -> tuple[Image.Image, byte
         image = Image.open(BytesIO(raw))
         image = ImageOps.exif_transpose(image)
         image = image.convert("RGB")
-    except Exception as exc:
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
         raise HTTPException(status_code=400, detail="Could not process the uploaded image") from exc
 
     image.thumbnail((MAX_IMAGE_EDGE, MAX_IMAGE_EDGE), Image.Resampling.LANCZOS)

@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     smtp_port: int = 587
     smtp_user: str | None = None
     smtp_password: str | None = None
-    smtp_from: str = "FindIt <noreply@findit.local>"
+    smtp_from: str = "AMAlost <noreply@amalost.local>"
     smtp_tls: bool = True
 
     # Used for exchange-confirmation links in emails

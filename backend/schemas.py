@@ -26,8 +26,7 @@ class AuthRegisterResponse(BaseModel):
     email: str | None = None
     mail_sent: bool = False
     mail_mode: str | None = None
-    # Local/demo fallback when SMTP is unavailable (also returned after successful send
-    # so thesis demos can still open the link without digging through Gmail).
+    # also returned when SMTP works so demos can open the link without digging through Gmail
     dev_verify_url: str | None = None
 
 
@@ -92,12 +91,12 @@ class MatchItem(BaseModel):
     reported_by: str | None = None
     image_url: str | None = None
     same_category: bool
+    same_location: bool = False
     tier: str
     scores_breakdown: ScoresBreakdown
 
 
 class LostMatchItem(BaseModel):
-    """Open lost report that may match a newly reported found item."""
     id: str
     score: float
     rank: int
@@ -107,6 +106,7 @@ class LostMatchItem(BaseModel):
     date_lost: str | None = None
     image_url: str | None = None
     same_category: bool
+    same_location: bool = False
     tier: str
     scores_breakdown: ScoresBreakdown
 
@@ -116,6 +116,8 @@ class LostItemResponse(BaseModel):
     matches: list[MatchItem]
     total_compared: int
     category_searched: str
+    location_scope: str | None = None
+    search_all_locations: bool = False
     scores_breakdown: ScoresBreakdown
     lost_image_url: str | None = None
     lost_description: str | None = None
@@ -145,7 +147,7 @@ class ClaimResponse(BaseModel):
     category: str | None = None
     found_location: str | None = None
     lost_location: str | None = None
-    pickup_point: str = "Library Information Desk"
+    pickup_point: str = "Agree a public campus meetup — coordinate directly"
     mail_mode: str | None = None
     owner_mail_sent: bool = False
     finder_mail_sent: bool = False
@@ -230,7 +232,7 @@ class ContactEmailResponse(BaseModel):
     category: str | None = None
     found_location: str | None = None
     lost_location: str | None = None
-    pickup_point: str = "Library Information Desk"
+    pickup_point: str = "Agree a public campus meetup — coordinate directly"
     notify_message: str | None = None
 
 
@@ -276,3 +278,10 @@ class AdminQueueResponse(BaseModel):
     found_items: list[FoundItemAdmin]
     lost_items: list[LostItemAdmin]
     claims: list[ClaimAdmin]
+
+
+class AdminDeleteResponse(BaseModel):
+    ok: bool = True
+    kind: str
+    id: str
+    message: str

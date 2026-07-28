@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""Offline matching evaluation for thesis results.
-
-Builds a synthetic ranking dataset of ground-truth pairs and distractors,
-then reports Precision@1, Recall@3, and mean reciprocal rank (MRR).
-
-Usage (from backend/):
-  python scripts/run_eval.py
-"""
+# synthetic Precision@1 / Recall@3 / MRR eval — run from backend/: python scripts/run_eval.py
 
 from __future__ import annotations
 
@@ -115,7 +108,7 @@ def main() -> None:
         if truth["id"] in ids:
             mrr += 1.0 / (ids.index(truth["id"]) + 1)
 
-    print("FindIt matching evaluation (synthetic CLIP-like signals)")
+    print("AMAlost matching evaluation (synthetic CLIP-like signals)")
     print(f"Queries: {n}")
     print(f"Precision@1: {p_at_1 / n:.3f}")
     print(f"Recall@3:    {recall_at_3 / n:.3f}")

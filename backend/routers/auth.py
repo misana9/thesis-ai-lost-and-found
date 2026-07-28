@@ -27,6 +27,7 @@ def build_user_token(user: models.Users) -> str:
             "email": user.email,
             "name": user.full_name,
             "email_verified": bool(user.email_verified),
+            "is_admin": bool(user.is_admin),
         },
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
     )
@@ -34,10 +35,10 @@ def build_user_token(user: models.Users) -> str:
 
 def verification_link(token: str) -> str:
     base = (settings.frontend_base_url or "http://localhost:3000").rstrip("/")
-    # Frontend opens findit.html and handles ?verify_token=
+    # Frontend opens amalost.html and handles ?verify_token=
     if base.endswith(".html"):
         return f"{base}?verify_token={token}"
-    return f"{base}/findit.html?verify_token={token}"
+    return f"{base}/amalost.html?verify_token={token}"
 
 
 def send_verification_mail(user: models.Users, token: str) -> dict:
@@ -95,8 +96,7 @@ async def resend_verification(
     body: schemas.AuthResendVerificationRequest,
     db: Session = Depends(get_db),
 ):
-    """Resend the verification email. Always returns a generic message to avoid
-    leaking whether an address is registered."""
+    # always same response so we don't leak whether the email exists
     email = body.email.strip().lower()
     user = oauth2.get_user(db, email)
     generic = {
@@ -191,7 +191,6 @@ async def legacy_login(
 
 @legacy_router.post("/register")
 async def legacy_register(user: schemas.userRegister, db: Session = Depends(get_db)):
-    """Compatibility wrapper — prefer POST /auth/register."""
     return await register(
         schemas.AuthRegisterRequest(
             name=user.full_name,

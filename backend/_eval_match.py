@@ -1,8 +1,4 @@
-"""Offline matching-quality experiment (no DB).
-
-Encodes Objects/<type>-/<N>_<type>/ folders directly with CLIP and evaluates how
-often the SAME physical item (same folder) ranks #1 under different weight schemes.
-"""
+# Objects folder weight-scheme experiment (no DB)
 import os, re
 from PIL import Image
 from clip_service import encode_pil_image, encode_text, cosine_similarity
@@ -38,9 +34,6 @@ SCHEMES = {
     "J img.88/t2t.12":                    lambda ii, ti, cr, tt: ii*0.88 + tt*0.12,
     "E image-only (1.0)":                 lambda ii, ti, cr, tt: ii,
 }
-# Precision note: same-category DIFFERENT items are counted as clutter when they
-# cross the display threshold. We report mean matches shown per query.
-
 
 def main():
     items = []
@@ -71,8 +64,7 @@ def main():
         cands.append({"label": label, "cat": cat, "img": found_img, "text": text_emb})
         queries.append({"label": label, "cat": cat, "img": lost_img, "text": text_emb})
 
-    # Precompute pairwise cosines
-    print("Scoring...\n")
+        print("Scoring...\n")
     THRESH = [0.55, 0.65, 0.72]
     results = {name: {"rank1": 0, "top3": 0, "top5": 0, "mrr": 0.0,
                       "shown": {t: 0 for t in THRESH}} for name in SCHEMES}

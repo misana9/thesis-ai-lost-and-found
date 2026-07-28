@@ -19,7 +19,8 @@ from email_service import (
     notify_match_accepted_to_owner,
 )
 from image_utils import read_and_sanitize_image
-from matching import compute_match
+from locations import validate_found_location, validate_lost_locations
+from matching import compute_match, locations_overlap
 import models
 import oauth2
 import schemas
@@ -30,13 +31,13 @@ UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 DEDUP_THRESHOLD = 0.98
-PICKUP_POINT = "Library Information Desk"
+PICKUP_POINT = "Agree a public campus meetup (e.g. Library entrance) — coordinate directly"
 
 
 def confirm_page_url(token: str) -> str:
     base = (getattr(settings, "frontend_base_url", None) or "http://localhost:3000").rstrip("/")
-    # SPA entry is findit.html (nginx may not serve / as index without that file).
-    return f"{base}/findit.html?confirm={token}"
+    # emails open amalost.html?confirm=
+    return f"{base}/amalost.html?confirm={token}"
 
 
 def normalize_email(value: str | None) -> str | None:
@@ -46,13 +47,12 @@ def normalize_email(value: str | None) -> str | None:
     return cleaned or None
 
 
-def resolve_uploader_email(
+def uploader_email(
     form_email: str | None,
     current_user: models.Users | None,
     *,
     required: bool = True,
 ) -> str | None:
-    """Prefer authenticated user email; fall back to form. Require for ownership tracking."""
     email = normalize_email(current_user.email if current_user else None) or normalize_email(form_email)
     if required and not email:
         raise HTTPException(
@@ -77,9 +77,6 @@ def require_user(
 
 
 def _apply_confirmation(db, claim, found, lost, role: str) -> str:
-    """Record one party's confirmation; mark processed + notify when both agree.
-
-    Shared by the email-token confirm and the authenticated dashboard confirm."""
     if claim.status == "cancelled":
         raise HTTPException(status_code=409, detail="This exchange was cancelled")
     if claim.status == "processed":
@@ -125,7 +122,7 @@ def _apply_confirmation(db, claim, found, lost, role: str) -> str:
     return "Finder confirmation recorded. Waiting for the owner to confirm."
 
 
-def format_reported_by(email: str | None, full_name: str | None = None) -> str | None:
+def short_name(email: str | None, full_name: str | None = None) -> str | None:
     if full_name:
         parts = full_name.strip().split()
         if len(parts) >= 2:
@@ -142,16 +139,16 @@ def format_reported_by(email: str | None, full_name: str | None = None) -> str |
     return f"{parts[0][0].upper()}. {parts[-1].capitalize()}"
 
 
-def embedding_list(value) -> list[float] | None:
+def as_vec(value) -> list[float] | None:
     if value is None:
         return None
     return list(value)
 
 
-LOST_TEXT_DEDUP_THRESHOLD = 0.985
+TEXT_DEDUP = 0.985
 
 
-def find_duplicate_lost(
+def find_dup_lost(
     db: Session,
     *,
     owner_email: str | None,
@@ -160,9 +157,6 @@ def find_duplicate_lost(
     image_embedding: list[float] | None,
     text_embedding: list[float] | None,
 ) -> models.LostItem | None:
-    """Return an existing OPEN lost report from the same owner that is effectively
-    the same item (near-identical photo, or near-identical description in the same
-    category). This stops repeat "searches" from piling up duplicate open rows."""
     if not owner_email and owner_user_id is None:
         return None
 
@@ -180,30 +174,25 @@ def find_duplicate_lost(
             continue
 
         if image_embedding is not None:
-            cand_image = embedding_list(cand.image_embedding)
+            cand_image = as_vec(cand.image_embedding)
             if cand_image is not None and cosine_similarity(image_embedding, cand_image) >= DEDUP_THRESHOLD:
                 return cand
 
         if text_embedding is not None and cand.category == category:
-            cand_text = embedding_list(cand.text_embedding)
-            if cand_text is not None and cosine_similarity(text_embedding, cand_text) >= LOST_TEXT_DEDUP_THRESHOLD:
+            cand_text = as_vec(cand.text_embedding)
+            if cand_text is not None and cosine_similarity(text_embedding, cand_text) >= TEXT_DEDUP:
                 return cand
 
     return None
 
 
-def find_near_duplicate(
+def find_near_dup(
     db: Session,
     image_embedding: list[float],
     *,
     finder_email: str | None = None,
     finder_user_id: int | None = None,
 ) -> models.FoundItem | None:
-    """Detect an accidental re-upload by the SAME finder.
-
-    Two different finders can't hold the same physical object, so a near-identical
-    photo from a different uploader is NOT a duplicate — only a same-uploader repeat
-    of the same available item is."""
     if not finder_email and finder_user_id is None:
         return None
 
@@ -220,7 +209,7 @@ def find_near_duplicate(
         )
         if not same_finder:
             continue
-        existing = embedding_list(item.image_embedding)
+        existing = as_vec(item.image_embedding)
         if existing is None:
             continue
         if cosine_similarity(image_embedding, existing) >= DEDUP_THRESHOLD:
@@ -228,21 +217,14 @@ def find_near_duplicate(
     return None
 
 
-# Adaptive result trimming. Different items of the same category (e.g. several
-# power banks) all score fairly high, forming a long tail below the true "leading
-# cluster". These constants keep the leading cluster and drop the tail after a gap.
-MATCH_MIN_KEEP = 3        # correct item is almost always within the top 3
-MATCH_LEAD_MARGIN = 0.08  # beyond top-3, drop anything this far below the #1 score
-MATCH_GAP = 0.035         # ...or where a gap this large opens vs the previous kept item
-MATCH_MAX_KEEP = 12       # hard safety cap
+# drop the long same-category tail after the leading cluster
+MATCH_MIN_KEEP = 3
+MATCH_LEAD_MARGIN = 0.08
+MATCH_GAP = 0.035
+MATCH_MAX_KEEP = 12
 
 
 def trim_ranked_matches(matches: list[dict]) -> list[dict]:
-    """Keep the leading cluster of a ranked match list and drop the weak tail.
-
-    Always keeps the top MATCH_MIN_KEEP, then keeps further matches only while they
-    stay within MATCH_LEAD_MARGIN of the #1 score and no MATCH_GAP-sized drop opens
-    up. Assumes `matches` is already sorted by descending score."""
     if len(matches) <= MATCH_MIN_KEEP:
         return matches
     top = matches[0]["score"]
@@ -266,9 +248,10 @@ def score_lost_against_found(
     lost_location: str | None,
     lost_date: str | None,
     found: models.FoundItem,
+    apply_location_boost: bool = True,
 ) -> dict | None:
-    found_image = embedding_list(found.image_embedding)
-    found_text = embedding_list(found.text_embedding)
+    found_image = as_vec(found.image_embedding)
+    found_text = as_vec(found.text_embedding)
     if found_image is None:
         return None
 
@@ -300,9 +283,12 @@ def score_lost_against_found(
         found_location=found.location,
         lost_date=lost_date,
         found_date=found.date_found,
+        apply_location_boost=apply_location_boost,
     )
     if tier is None:
         return None
+
+    same_location = locations_overlap(lost_location, found.location)
 
     return {
         "id": found.id,
@@ -315,6 +301,7 @@ def score_lost_against_found(
         "reported_by": found.reported_by,
         "image_url": f"/uploads/{found.image_path}" if found.image_path else None,
         "same_category": same_category,
+        "same_location": same_location,
         "tier": tier,
         "scores_breakdown": scores_breakdown,
         "finder_email": found.finder_email,
@@ -351,7 +338,15 @@ async def report_found_item(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    email = resolve_uploader_email(finder_email, current_user)
+    try:
+        location = validate_found_location(location)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if date_found:
+        date_found = date_found.strip()
+
+    email = uploader_email(finder_email, current_user)
 
     try:
         pil_image, jpeg_bytes = await read_and_sanitize_image(image)
@@ -361,7 +356,7 @@ async def report_found_item(
     except Exception:
         raise HTTPException(status_code=400, detail="Could not process the uploaded image")
 
-    duplicate = find_near_duplicate(
+    duplicate = find_near_dup(
         db,
         image_embedding,
         finder_email=email,
@@ -379,7 +374,7 @@ async def report_found_item(
     text_embedding = encode_text(description) if description else None
     now = datetime.now()
 
-    reported_by = format_reported_by(
+    reported_by = short_name(
         email,
         current_user.full_name if current_user else None,
     )
@@ -403,8 +398,7 @@ async def report_found_item(
     db.commit()
     db.refresh(item)
 
-    # Reverse match against open lost reports (lost filed first, found later).
-    # No email yet — finder reviews ranked matches in-app and can accept a pairing.
+    # check open lost reports (finder reviews in-app; no auto-email)
     open_lost = (
         db.query(models.LostItem)
         .filter(models.LostItem.status == "open")
@@ -415,12 +409,12 @@ async def report_found_item(
     for lost in open_lost:
         if emails_match(lost.email, email):
             continue
-        lost_text = embedding_list(lost.text_embedding)
+        lost_text = as_vec(lost.text_embedding)
         if lost_text is None:
             continue
         hit = score_lost_against_found(
             lost_text_embedding=lost_text,
-            lost_image_embedding=embedding_list(lost.image_embedding),
+            lost_image_embedding=as_vec(lost.image_embedding),
             lost_category=lost.category,
             lost_location=lost.location,
             lost_date=lost.date_lost,
@@ -438,6 +432,7 @@ async def report_found_item(
                 "date_lost": lost.date_lost,
                 "image_url": f"/uploads/{lost.image_path}" if lost.image_path else None,
                 "same_category": hit["same_category"],
+                "same_location": hit.get("same_location", False),
                 "tier": hit["tier"],
                 "scores_breakdown": hit["scores_breakdown"],
             }
@@ -489,6 +484,7 @@ async def report_lost_item(
     date_lost: str | None = Form(None),
     email: str | None = Form(None),
     original_category: str | None = Form(None),
+    search_all_locations: str | None = Form(None),
     db: Session = Depends(get_db),
     current_user: models.Users | None = Depends(oauth2.get_optional_user),
 ):
@@ -505,7 +501,23 @@ async def report_lost_item(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    owner_email = resolve_uploader_email(email, current_user)
+    try:
+        location = validate_lost_locations(location)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if date_lost:
+        date_lost = date_lost.strip()
+
+    # location boost off when "search all locations" is set
+    apply_location_boost = str(search_all_locations or "").strip().lower() not in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+    owner_email = uploader_email(email, current_user)
 
     lost_image_embedding = None
     image_path = None
@@ -525,9 +537,8 @@ async def report_lost_item(
     lost_category = preferred_category
     owner_user_id = current_user.id if current_user else None
 
-    # Reuse an existing open report from the same owner instead of inserting a
-    # duplicate row when someone re-searches with the same photo/description.
-    lost_item = find_duplicate_lost(
+    # reuse open row if same owner re-searches the same item
+    lost_item = find_dup_lost(
         db,
         owner_email=owner_email,
         owner_user_id=owner_user_id,
@@ -568,8 +579,7 @@ async def report_lost_item(
         db.commit()
         db.refresh(lost_item)
 
-    # Soft category preference via scoring multiplier — no hard SQL filter.
-    # Prefer available items; use pgvector cosine distance when a lost image exists.
+    # no hard category SQL filter — multiplier handles it in scoring
     query = db.query(models.FoundItem).filter(models.FoundItem.status == "available")
     if lost_image_embedding is not None:
         query = query.order_by(models.FoundItem.image_embedding.cosine_distance(lost_image_embedding))
@@ -578,7 +588,7 @@ async def report_lost_item(
 
     ranked_matches: list[dict] = []
     for found in found_items:
-        # Never surface the uploader's own found reports as matches.
+        # don't match against the owner's own found uploads
         if emails_match(found.finder_email, owner_email):
             continue
 
@@ -589,6 +599,7 @@ async def report_lost_item(
             lost_location=location,
             lost_date=date_lost,
             found=found,
+            apply_location_boost=apply_location_boost,
         )
         if match is None:
             continue
@@ -609,11 +620,19 @@ async def report_lost_item(
         }
     )
 
+    location_scope = (
+        "All locations (no location boost)"
+        if not apply_location_boost
+        else f"Preferring: {location}"
+    )
+
     return {
         "id": lost_item.id,
         "matches": ranked_matches,
         "total_compared": len(found_items),
         "category_searched": category_searched,
+        "location_scope": location_scope,
+        "search_all_locations": not apply_location_boost,
         "scores_breakdown": top_breakdown,
         "lost_image_url": f"/uploads/{lost_item.image_path}" if lost_item.image_path else None,
         "lost_description": lost_item.description,
@@ -643,12 +662,12 @@ async def claim_item(
     if initiated_by not in {"owner", "finder"}:
         raise HTTPException(status_code=400, detail="initiated_by must be 'owner' or 'finder'")
 
-    actor_email = resolve_uploader_email(body.email, current_user)
+    actor_email = uploader_email(body.email, current_user)
     finder_email = normalize_email(found.finder_email)
     owner_email = normalize_email(lost.email)
 
     if initiated_by == "finder":
-        # Finder accepts an open lost match (lost was filed first).
+        # finder accepting a lost match
         if not emails_match(actor_email, finder_email):
             raise HTTPException(
                 status_code=403,
@@ -662,7 +681,7 @@ async def claim_item(
         if emails_match(owner_email, finder_email):
             raise HTTPException(status_code=400, detail="Cannot pair your own lost and found reports")
     else:
-        # Owner claims a found item (classic lost-search flow).
+        # owner claiming a found item
         owner_email = normalize_email(actor_email) or owner_email
         if not owner_email:
             raise HTTPException(status_code=400, detail="Owner email is required")
@@ -807,9 +826,6 @@ async def confirm_exchange_authenticated(
     db: Session = Depends(get_db),
     current_user: models.Users = Depends(require_user),
 ):
-    """Confirm an exchange from the authenticated dashboard (no email token needed).
-
-    The caller's identity determines whether they confirm as owner or finder."""
     claim = db.query(models.Claim).filter(models.Claim.id == body.claim_id).first()
     if not claim:
         raise HTTPException(status_code=404, detail="Claim not found")
@@ -853,9 +869,6 @@ async def cancel_claim(
     db: Session = Depends(get_db),
     current_user: models.Users = Depends(require_user),
 ):
-    """Cancel an in-process exchange and reopen both items for matching.
-
-    Only a participant (owner or finder) may cancel."""
     claim = None
     if body.claim_id:
         claim = db.query(models.Claim).filter(models.Claim.id == body.claim_id).first()
@@ -899,7 +912,7 @@ async def cancel_claim(
         lost.status = "open"
     db.commit()
 
-    cancelled_by = format_reported_by(actor_email, current_user.full_name) or actor_email
+    cancelled_by = short_name(actor_email, current_user.full_name) or actor_email
     category = (found.category if found else None) or (lost.category if lost else None) or "item"
     if owner_email:
         notify_exchange_cancelled(
@@ -966,7 +979,7 @@ async def my_dashboard(
         .all()
     )
 
-    # Preload any linked items not already in the user's own lists.
+    # pull linked items that aren't already in the user's lists
     found_map = {item.id: item for item in found_items}
     lost_map = {item.id: item for item in lost_items}
     missing_found = {c.found_item_id for c in claims} - set(found_map)
@@ -1058,7 +1071,6 @@ async def resend_claim_contact_email(
     db: Session = Depends(get_db),
     current_user: models.Users | None = Depends(oauth2.get_optional_user),
 ):
-    """Resend match-accepted emails while an exchange is still in process."""
     found = db.query(models.FoundItem).filter(models.FoundItem.id == body.found_item_id).first()
     lost = db.query(models.LostItem).filter(models.LostItem.id == body.lost_item_id).first()
     if not found or not lost:
@@ -1075,7 +1087,7 @@ async def resend_claim_contact_email(
     if not claim:
         raise HTTPException(status_code=404, detail="Claim not found for this pair")
 
-    email = resolve_uploader_email(body.email or lost.email, current_user)
+    email = uploader_email(body.email or lost.email, current_user)
     finder_email = normalize_email(found.finder_email)
     if not finder_email:
         raise HTTPException(status_code=400, detail="Finder has no email on file")
@@ -1129,6 +1141,70 @@ async def resend_claim_contact_email(
             f"Finder ({finder_email}): {'sent' if finder_result.get('sent') else 'failed'} via {finder_result.get('mode')}"
         ),
     }
+
+
+def _remove_upload_file(image_path: str | None) -> None:
+    if not image_path:
+        return
+    path = UPLOAD_DIR / image_path
+    try:
+        if path.is_file():
+            path.unlink()
+    except OSError:
+        pass
+
+
+def _reopen_items_for_claim(db: Session, claim: models.Claim) -> tuple[models.FoundItem | None, models.LostItem | None]:
+    found = db.query(models.FoundItem).filter(models.FoundItem.id == claim.found_item_id).first()
+    lost = db.query(models.LostItem).filter(models.LostItem.id == claim.lost_item_id).first()
+    if found and found.status == "in_process":
+        found.status = "available"
+        found.claimed_by_lost_id = None
+    if lost and lost.status == "in_process":
+        lost.status = "open"
+    return found, lost
+
+
+def _find_claim_for_admin_cancel(
+    db: Session,
+    *,
+    claim_id: str | None = None,
+    found_item_id: str | None = None,
+    lost_item_id: str | None = None,
+) -> models.Claim | None:
+    if claim_id:
+        return db.query(models.Claim).filter(models.Claim.id == claim_id).first()
+    if found_item_id and lost_item_id:
+        return (
+            db.query(models.Claim)
+            .filter(
+                models.Claim.found_item_id == found_item_id,
+                models.Claim.lost_item_id == lost_item_id,
+            )
+            .order_by(models.Claim.created_at.desc())
+            .first()
+        )
+    if found_item_id:
+        return (
+            db.query(models.Claim)
+            .filter(
+                models.Claim.found_item_id == found_item_id,
+                models.Claim.status == "in_process",
+            )
+            .order_by(models.Claim.created_at.desc())
+            .first()
+        )
+    if lost_item_id:
+        return (
+            db.query(models.Claim)
+            .filter(
+                models.Claim.lost_item_id == lost_item_id,
+                models.Claim.status == "in_process",
+            )
+            .order_by(models.Claim.created_at.desc())
+            .first()
+        )
+    return None
 
 
 @router.get("/admin/queue", response_model=schemas.AdminQueueResponse)
@@ -1188,7 +1264,122 @@ async def admin_queue(
     }
 
 
-# Public read-only queue for demo admin UI without forcing admin seed during thesis demos.
+@router.post("/admin/claim/cancel", response_model=schemas.ClaimCancelResponse)
+async def admin_cancel_claim(
+    body: schemas.ClaimCancelRequest,
+    db: Session = Depends(get_db),
+    admin: models.Users = Depends(oauth2.get_admin_user),
+):
+    claim = _find_claim_for_admin_cancel(
+        db,
+        claim_id=body.claim_id,
+        found_item_id=body.found_item_id,
+        lost_item_id=body.lost_item_id,
+    )
+    if not claim:
+        raise HTTPException(status_code=404, detail="Claim not found")
+    if claim.status != "in_process":
+        raise HTTPException(status_code=409, detail="Only in-process exchanges can be cancelled")
+
+    found, lost = _reopen_items_for_claim(db, claim)
+    claim.status = "cancelled"
+    db.commit()
+
+    cancelled_by = short_name(admin.email, admin.full_name) or admin.email or "admin"
+    category = (found.category if found else None) or (lost.category if lost else None) or "item"
+    owner_email = normalize_email(claim.claimed_by_email or (lost.email if lost else None))
+    finder_email = normalize_email(found.finder_email if found else None)
+    if owner_email:
+        notify_exchange_cancelled(
+            to_email=owner_email,
+            category=category,
+            cancelled_by=cancelled_by,
+            other_party_email=finder_email,
+        )
+    if finder_email and not emails_match(finder_email, owner_email):
+        notify_exchange_cancelled(
+            to_email=finder_email,
+            category=category,
+            cancelled_by=cancelled_by,
+            other_party_email=owner_email,
+        )
+
+    return {
+        "claim_id": claim.id,
+        "status": claim.status,
+        "message": "Exchange cancelled by admin. Both items are open again for matching.",
+        "found_status": found.status if found else None,
+        "lost_status": lost.status if lost else None,
+    }
+
+
+@router.delete("/admin/{kind}/{item_id}", response_model=schemas.AdminDeleteResponse)
+async def admin_delete_entry(
+    kind: str,
+    item_id: str,
+    db: Session = Depends(get_db),
+    _admin: models.Users = Depends(oauth2.get_admin_user),
+):
+    kind = (kind or "").strip().lower()
+    if kind not in {"lost", "found", "claim"}:
+        raise HTTPException(status_code=400, detail="kind must be lost, found, or claim")
+
+    if kind == "claim":
+        claim = db.query(models.Claim).filter(models.Claim.id == item_id).first()
+        if not claim:
+            raise HTTPException(status_code=404, detail="Claim not found")
+        if claim.status == "in_process":
+            _reopen_items_for_claim(db, claim)
+        db.delete(claim)
+        db.commit()
+        return {
+            "ok": True,
+            "kind": kind,
+            "id": item_id,
+            "message": "Claim deleted.",
+        }
+
+    if kind == "lost":
+        item = db.query(models.LostItem).filter(models.LostItem.id == item_id).first()
+        if not item:
+            raise HTTPException(status_code=404, detail="Lost item not found")
+        claims = db.query(models.Claim).filter(models.Claim.lost_item_id == item.id).all()
+        for claim in claims:
+            if claim.status == "in_process":
+                _reopen_items_for_claim(db, claim)
+            db.delete(claim)
+        image_path = item.image_path
+        db.delete(item)
+        db.commit()
+        _remove_upload_file(image_path)
+        return {
+            "ok": True,
+            "kind": kind,
+            "id": item_id,
+            "message": "Lost item deleted.",
+        }
+
+    item = db.query(models.FoundItem).filter(models.FoundItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Found item not found")
+    claims = db.query(models.Claim).filter(models.Claim.found_item_id == item.id).all()
+    for claim in claims:
+        if claim.status == "in_process":
+            _reopen_items_for_claim(db, claim)
+        db.delete(claim)
+    image_path = item.image_path
+    db.delete(item)
+    db.commit()
+    _remove_upload_file(image_path)
+    return {
+        "ok": True,
+        "kind": kind,
+        "id": item_id,
+        "message": "Found item deleted.",
+    }
+
+
+# public queue (demo) — no admin auth required
 @router.get("/queue", response_model=schemas.AdminQueueResponse)
 async def public_queue(db: Session = Depends(get_db)):
     found_items = db.query(models.FoundItem).order_by(models.FoundItem.created_at.desc()).limit(50).all()

@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────
-   FindIt — app.js
+   AMAlost — app.js
    All view logic, state, and API calls.
    No inline event handlers — everything is
    wired via addEventListener after DOM ready.
@@ -21,6 +21,67 @@ const CATEGORIES = [
   { name: 'Other',              emoji: '📦' },
 ];
 
+/** Where an item was discovered (found) or places visited that day (lost). */
+const CAMPUS_LOCATIONS = [
+  'Registrar Office',
+  'Faculty',
+  'Library',
+  'Room 401',
+  'Room 402',
+  'Room 403',
+  'Room 404',
+  'Room 405',
+  'Room 406',
+  'Room 407',
+  'Room 408',
+  'Room 409',
+  'Room 410',
+];
+
+function todayISODate() {
+  const d = new Date();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+function formatLocationsLabel(locations) {
+  if (Array.isArray(locations)) {
+    return locations.length ? locations.join(' · ') : '—';
+  }
+  return locations || '—';
+}
+
+function locationCheckboxesHTML(selected, namePrefix) {
+  const selectedSet = new Set(Array.isArray(selected) ? selected : []);
+  return `<div class="location-grid">
+    ${CAMPUS_LOCATIONS.map(loc => {
+      const id = `${namePrefix}-${loc.replace(/\s+/g, '-').toLowerCase()}`;
+      const checked = selectedSet.has(loc) ? 'checked' : '';
+      return `<label class="location-chip" for="${id}">
+        <input type="checkbox" id="${id}" name="${namePrefix}" value="${loc}" ${checked}/>
+        <span>${loc}</span>
+      </label>`;
+    }).join('')}
+  </div>`;
+}
+
+function locationSelectHTML(selected, selectId) {
+  const opts = CAMPUS_LOCATIONS.map(loc => {
+    const sel = loc === selected ? 'selected' : '';
+    return `<option value="${loc}" ${sel}>${loc}</option>`;
+  }).join('');
+  return `<select id="${selectId}" required>
+    <option value="">Select where it was found…</option>
+    ${opts}
+  </select>`;
+}
+
+function readCheckedLocations(namePrefix) {
+  return Array.from(document.querySelectorAll(`input[name="${namePrefix}"]:checked`))
+    .map(el => el.value);
+}
+
 /* ── STATE ── */
 let currentFlow = 'lost';
 
@@ -33,7 +94,7 @@ const state = {
     predictionScores: null,
     predictionLoading: false,
     description: '',
-    location: '',
+    location: [],
     dateLost: '',
     email: '',
   },
@@ -58,6 +119,7 @@ const state = {
     foundForm: null,
     direction: 'lost_to_found', // 'lost_to_found' | 'found_to_lost'
     expandAll: false,
+    searchAllLocations: false,
     selectedIndex: 0,
     claimMessage: null,
     contact: null,
@@ -80,7 +142,7 @@ const auth = {
   verified: false,
 };
 
-const TOKEN_KEY = 'findit_token';
+const TOKEN_KEY = 'amalost_token';
 const PROTECTED_VIEWS = ['landing', 'lost', 'found', 'match', 'admin', 'dashboard'];
 
 const loginAttempts = {
@@ -149,8 +211,18 @@ function loadToken() {
   }
 }
 
+function isAdminUser() {
+  return !!(auth.token && auth.user?.is_admin);
+}
+
+function goHome() {
+  if (isAdminUser()) openAdminQueue();
+  else showView('landing');
+}
+
 function renderNav() {
   const isAuthed = !!auth.token;
+  const isAdmin = isAdminUser();
   const firstName = auth.user?.name?.split(' ')[0]
     || auth.user?.full_name?.split(' ')[0]
     || auth.user?.email?.split('@')[0]
@@ -159,10 +231,12 @@ function renderNav() {
   document.querySelectorAll('.nav-right').forEach(navRight => {
     if (isAuthed) {
       navRight.innerHTML = `
+        ${isAdmin ? '<button type="button" class="nav-btn btn-admin">Admin</button>' : ''}
         <button type="button" class="nav-btn btn-my-items">My items</button>
         <span class="nav-user-name">${firstName}</span>
         <button type="button" class="nav-btn btn-signout">Sign out</button>
       `;
+      navRight.querySelector('.btn-admin')?.addEventListener('click', () => openAdminQueue());
       navRight.querySelector('.btn-my-items')?.addEventListener('click', () => openDashboard());
       navRight.querySelector('.btn-signout')?.addEventListener('click', () => {
         clearToken();
@@ -311,7 +385,7 @@ function startLostFlow() {
   Object.assign(state.lost, {
     step: 'photo', imageFile: null, imagePreview: null,
     category: null, predictionScores: null, predictionLoading: false,
-    description: '', location: '', dateLost: '', email: accountEmail(),
+    description: '', location: [], dateLost: todayISODate(), email: accountEmail(),
   });
   renderLostStep();
   showView('lost');
@@ -402,13 +476,14 @@ function buildLostHTML(s) {
           <textarea id="lost-desc" placeholder="e.g. Black backpack with red zipper…">${s.description}</textarea>
         </div>
         <div class="field">
-          <label for="lost-location">Where lost</label>
-          <input type="text" id="lost-location" placeholder="e.g. Main Library, Floor 2" value="${s.location}"/>
+          <label>Places you visited that day</label>
+          <p class="bottom-note" style="margin:0 0 10px">Select every spot you went — matching prefers found items from these places (soft boost, not a hard filter).</p>
+          ${locationCheckboxesHTML(s.location, 'lost-loc')}
         </div>
         <div class="row-2">
           <div class="field">
             <label for="lost-date">Date lost</label>
-            <input type="text" id="lost-date" placeholder="e.g. June 10, 2026" value="${s.dateLost}"/>
+            <input type="date" id="lost-date" value="${s.dateLost || todayISODate()}" required/>
           </div>
           <div class="field">
             <label for="lost-email">Your email</label>
@@ -432,7 +507,7 @@ function buildLostHTML(s) {
         <div class="review-body">
           <div class="review-row"><div class="review-key">Category</div><div class="review-val">${getCategoryEmoji(s.category)} ${s.category}</div></div>
           <div class="review-row"><div class="review-key">Description</div><div class="review-val">${s.description || '—'}</div></div>
-          <div class="review-row"><div class="review-key">Where lost</div><div class="review-val">${s.location || '—'}</div></div>
+          <div class="review-row"><div class="review-key">Places visited</div><div class="review-val">${formatLocationsLabel(s.location)}</div></div>
           <div class="review-row"><div class="review-key">Date lost</div><div class="review-val">${s.dateLost || '—'}</div></div>
           <div class="review-row"><div class="review-key">Email</div><div class="review-val">${s.email || '—'}</div></div>
         </div>
@@ -478,11 +553,16 @@ function bindLostEvents(s) {
 
   el.querySelector('#lost-next-btn')?.addEventListener('click', () => {
     state.lost.description = document.getElementById('lost-desc').value.trim();
-    state.lost.location    = document.getElementById('lost-location').value.trim();
+    state.lost.location    = readCheckedLocations('lost-loc');
     state.lost.dateLost    = document.getElementById('lost-date').value.trim();
     state.lost.email       = document.getElementById('lost-email').value.trim().toLowerCase();
     const descErr = descriptionValidationError(state.lost.description);
     if (descErr) { alert(descErr); return; }
+    if (!state.lost.location.length) {
+      alert('Select at least one place you visited the day the item was lost.');
+      return;
+    }
+    if (!state.lost.dateLost) { alert('Please select the date lost.'); return; }
     if (!isValidEmail(state.lost.email)) { alert('Please enter a valid email so we can notify you.'); return; }
     state.lost.step = 'review';
     renderLostStep();
@@ -507,11 +587,10 @@ function handleLostUpload(e) {
 
 function startFoundFlow() {
   currentFlow = 'found';
-  const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   Object.assign(state.found, {
     step: 'photo', imageFile: null, imagePreview: null,
     category: null, predictionScores: null, predictionLoading: false,
-    description: '', location: '', dateFound: today, email: accountEmail(),
+    description: '', location: '', dateFound: todayISODate(), email: accountEmail(),
     successMessage: null,
   });
   renderFoundStep();
@@ -601,11 +680,12 @@ function buildFoundHTML(s) {
         <div class="row-2">
           <div class="field">
             <label for="found-location">Where found</label>
-            <input type="text" id="found-location" placeholder="e.g. Main Library, Floor 2" value="${s.location}"/>
+            ${locationSelectHTML(s.location, 'found-location')}
+            <p class="bottom-note" style="margin-top:6px">Discovery spot — where you picked it up, not a holding desk.</p>
           </div>
           <div class="field">
             <label for="found-date">Date found</label>
-            <input type="text" id="found-date" value="${s.dateFound}"/>
+            <input type="date" id="found-date" value="${s.dateFound || todayISODate()}" required/>
           </div>
         </div>
       </div>
@@ -701,7 +781,7 @@ async function predictCategory(flow) {
 
 /* ─────────────────────── SUBMIT LOST ─────────────────────── */
 
-async function submitLostReport(expandAll = false) {
+async function submitLostReport(expandAll = false, searchAllLocations = false) {
   const btn   = document.getElementById('lost-submit-btn');
   const errEl = document.getElementById('lost-error');
   if (btn)   { btn.disabled = true; btn.textContent = 'Searching for matches…'; }
@@ -717,14 +797,26 @@ async function submitLostReport(expandAll = false) {
     return;
   }
 
+  const locations = Array.isArray(s.location) ? s.location : (s.location ? [s.location] : []);
+  if (!locations.length) {
+    if (btn)   { btn.disabled = false; btn.textContent = 'Submit lost report →'; }
+    if (errEl) {
+      errEl.textContent = 'Select at least one place you visited that day.';
+      errEl.classList.add('visible');
+    }
+    return;
+  }
+
+  const applyAllLocations = searchAllLocations || state.match.searchAllLocations;
   const fd = new FormData();
   if (s.imageFile) fd.append('image', s.imageFile);
   fd.append('description', s.description);
   fd.append('category', expandAll ? 'All' : s.category);
   if (expandAll) fd.append('original_category', s.category);
-  if (s.location) fd.append('location', s.location);
+  fd.append('location', locations.join(' | '));
   if (s.dateLost) fd.append('date_lost', s.dateLost);
   fd.append('email', s.email);
+  if (applyAllLocations) fd.append('search_all_locations', 'true');
 
   try {
     const res  = await fetch(`${API_BASE}/lost`, {
@@ -738,12 +830,13 @@ async function submitLostReport(expandAll = false) {
     }
     const data = await res.json();
     state.match.response      = data;
-    state.match.lostForm      = { ...s };
+    state.match.lostForm      = { ...s, location: locations };
     state.match.lostItemId    = data.id || null;
     state.match.foundItemId   = null;
     state.match.foundForm     = null;
     state.match.direction     = 'lost_to_found';
     state.match.expandAll     = expandAll;
+    state.match.searchAllLocations = !!data.search_all_locations || applyAllLocations;
     state.match.selectedIndex = 0;
     state.match.claimMessage  = null;
     state.match.contact       = null;
@@ -791,12 +884,29 @@ async function submitFoundReport() {
     return;
   }
 
+  if (!s.location) {
+    if (btn)   { btn.disabled = false; btn.textContent = 'Submit found item →'; }
+    if (errEl) {
+      errEl.textContent = 'Select where the item was found.';
+      errEl.classList.add('visible');
+    }
+    return;
+  }
+  if (!s.dateFound) {
+    if (btn)   { btn.disabled = false; btn.textContent = 'Submit found item →'; }
+    if (errEl) {
+      errEl.textContent = 'Select the date found.';
+      errEl.classList.add('visible');
+    }
+    return;
+  }
+
   const fd = new FormData();
   fd.append('image', s.imageFile);
   fd.append('description', s.description);
   fd.append('category', s.category);
-  if (s.location)  fd.append('location', s.location);
-  if (s.dateFound) fd.append('date_found', s.dateFound);
+  fd.append('location', s.location);
+  fd.append('date_found', s.dateFound);
   fd.append('finder_email', s.email);
 
   try {
@@ -827,6 +937,7 @@ async function submitFoundReport() {
       state.match.lostForm = null;
       state.match.direction = 'found_to_lost';
       state.match.expandAll = false;
+      state.match.searchAllLocations = false;
       state.match.selectedIndex = 0;
       state.match.claimMessage = null;
       state.match.contact = null;
@@ -924,11 +1035,14 @@ function renderMatchView() {
     : (response.lost_description || lostForm?.description || '—');
   const leftLocation = isReverse
     ? (response.found_location || foundForm?.location || '—')
-    : (response.lost_location || lostForm?.location || '—');
+    : formatLocationsLabel(response.lost_location || lostForm?.location);
   const leftDate = isReverse
     ? (response.found_date || foundForm?.dateFound || '—')
     : (response.lost_date || lostForm?.dateLost || '—');
 
+  const sameLocation = !!selected.same_location;
+  const locationScope = response.location_scope
+    || (state.match.searchAllLocations ? 'All locations (no location boost)' : null);
   const rightDate = isReverse ? (selected.date_lost || '—') : (selected.date_found || '—');
   const primaryBtn = claimMessage
     ? (isReverse ? 'Match accepted' : 'Claim submitted')
@@ -943,7 +1057,7 @@ function renderMatchView() {
     : 'Compare your lost item with this match';
   const scopeLine = isReverse
     ? `${matches.length} above threshold · Compared ${total} open lost reports`
-    : `${matches.length} above threshold · Compared ${total} found items · Scope: ${category}`;
+    : `${matches.length} above threshold · Compared ${total} found items · Scope: ${category}${locationScope ? ` · ${locationScope}` : ''}`;
 
   container.innerHTML = `
     <button class="back-link" id="match-back-landing">← Back</button>
@@ -1038,7 +1152,7 @@ function renderMatchView() {
         <div class="detail-row"><div class="detail-key">${isReverse ? 'Lost at' : 'Found at'}</div><div class="detail-val emerald">${selected.location || '—'}</div></div>
         <div class="detail-row"><div class="detail-key">${isReverse ? 'Date lost' : 'Date found'}</div><div class="detail-val">${rightDate}</div></div>
         ${!isReverse ? `<div class="detail-row"><div class="detail-key">Time found</div><div class="detail-val">${selected.time_found || '—'}</div></div>` : ''}
-        <div class="detail-row"><div class="detail-key">Pickup</div><div class="detail-val">Library Information Desk</div></div>
+        <div class="detail-row"><div class="detail-key">Meetup</div><div class="detail-val">Coordinate directly (public campus spot)</div></div>
       </div>
       <div class="similarity-section">
         <div class="similarity-title">Similarity breakdown</div>
@@ -1052,6 +1166,17 @@ function renderMatchView() {
           ${sameCategory ? '✓ Same category' : '⚠ Different category'}
         </span>
       </div>
+      <div class="category-match-row">
+        <div class="category-match-label">Location overlap</div>
+        <span class="cat-match-pill ${sameLocation ? 'same' : 'diff'}">
+          ${sameLocation ? '✓ Found spot in your places' : '○ Different / unknown place'}
+        </span>
+      </div>
+      ${!isReverse && !state.match.searchAllLocations ? `
+        <button type="button" class="btn-text" id="btn-expand-locations" style="margin-top:12px">
+          Search all locations (ignore place boost) →
+        </button>
+      ` : ''}
     </div>
 
     <div class="action-btns">
@@ -1092,6 +1217,7 @@ function renderMatchView() {
 }
 
 function buildEmptyMatchHTML(category, total) {
+  const locScope = state.match.response?.location_scope || '';
   return `
     <button class="back-link" id="match-back-landing">← Back</button>
     <div class="empty-state">
@@ -1103,35 +1229,43 @@ function buildEmptyMatchHTML(category, total) {
       </div>
       <div class="empty-title">No matches found in ${category}</div>
       <div class="empty-sub">We searched ${total} found items. We'll notify you by email when something comes in.</div>
-      ${!state.match.expandAll
-        ? `<button class="btn-text" id="btn-expand-search">Expand search to all categories</button>`
-        : ''
-      }
+      <div style="display:flex;flex-direction:column;gap:8px;align-items:center;margin-top:8px">
+        ${!state.match.expandAll
+          ? `<button class="btn-text" id="btn-expand-search">Expand search to all categories</button>`
+          : ''
+        }
+        ${!state.match.searchAllLocations
+          ? `<button class="btn-text" id="btn-expand-locations">Search all locations (ignore place boost)</button>`
+          : ''
+        }
+      </div>
     </div>
     <div class="match-footer-note">
-      Searched ${total} reports · Scope: ${category} · Ranked by weighted CLIP similarity
+      Searched ${total} reports · Scope: ${category}${locScope ? ` · ${locScope}` : ''} · Ranked by weighted CLIP similarity
     </div>`;
 }
 
 function buildClaimEmailTemplate(contact) {
   const category = contact.category || 'item';
-  const pickup = contact.pickup_point || 'Library Information Desk';
+  const pickup = contact.pickup_point
+    || 'Agree a public campus meetup — coordinate directly';
   const foundLoc = contact.found_location || 'n/a';
   const lostLoc = contact.lost_location || 'n/a';
   const owner = contact.owner_email || accountEmail() || 'me';
   return {
-    subject: `FindIt match accepted — contact for ${category}`,
+    subject: `AMAlost match accepted — contact for ${category}`,
     body: [
       `Match accepted. Status: IN PROCESS.`,
       '',
       `Finder: ${contact.finder_name || 'Anonymous'} <${contact.finder_email}>`,
       `Owner: ${owner}`,
-      `Found location: ${foundLoc}`,
-      `Lost location: ${lostLoc}`,
-      `Suggested meetup: ${pickup}`,
+      `Found at (discovery): ${foundLoc}`,
+      `Lost places visited: ${lostLoc}`,
+      `Meetup: ${pickup}`,
       '',
+      'Coordinate pickup with each other — AMAlost does not hold items.',
       'Both parties must confirm after a successful exchange.',
-      'Anti-fraud: meet at the desk, verify identity, never send money.',
+      'Anti-fraud: public meetup, verify identity, never send money.',
     ].join('\n'),
   };
 }
@@ -1147,7 +1281,7 @@ function openFinderContactModal(contactOverride = null) {
       <div class="contact-modal-backdrop" id="contact-modal-backdrop">
         <div class="contact-modal" role="dialog" aria-modal="true" aria-labelledby="contact-modal-title">
           <div class="contact-modal-title" id="contact-modal-title">Finder contact unavailable</div>
-          <div class="contact-modal-sub">This found item has no email on file. Arrange pickup at the Library Information Desk.</div>
+          <div class="contact-modal-sub">This found item has no email on file. Coordinate a public campus meetup if you still pursue the claim.</div>
           <div class="contact-modal-actions">
             <button type="button" class="btn-secondary" id="btn-close-contact-modal">Close</button>
           </div>
@@ -1189,7 +1323,7 @@ function openFinderContactModal(contactOverride = null) {
         </div>
         <div class="contact-detail">
           <div class="contact-detail-label">Pickup point</div>
-          <div class="contact-detail-value">${contact.pickup_point || 'Library Information Desk'}</div>
+          <div class="contact-detail-value">${contact.pickup_point || 'Coordinate a public campus meetup'}</div>
         </div>
         <div class="contact-detail">
           <div class="contact-detail-label">Email delivery</div>
@@ -1199,7 +1333,7 @@ function openFinderContactModal(contactOverride = null) {
         <div class="contact-detail-label" style="margin-top:12px">What was emailed</div>
         <div class="contact-template-preview"><strong>Subject:</strong> ${template.subject}\n\n${template.body}</div>
         <div class="contact-modal-sub" style="margin-top:8px">
-          Safety tip: meet at the Library Information Desk, verify the rightful owner, and never send money.
+          Safety tip: meet in public, verify the rightful owner, and never send money. AMAlost does not hold items.
         </div>
         <div id="contact-send-status" class="contact-modal-sub" style="margin:0 0 10px"></div>
 
@@ -1311,9 +1445,9 @@ async function handleVerifyQueryParam() {
   } finally {
     const url = new URL(window.location.href);
     url.searchParams.delete('verify_token');
-    const clean = url.pathname.endsWith('findit.html')
+    const clean = url.pathname.endsWith('amalost.html')
       ? `${url.pathname}${url.search}${url.hash}`
-      : `/findit.html${url.search}${url.hash}`;
+      : `/amalost.html${url.search}${url.hash}`;
     window.history.replaceState({}, '', clean);
   }
 }
@@ -1350,10 +1484,10 @@ async function handleConfirmQueryParam() {
   } finally {
     const url = new URL(window.location.href);
     url.searchParams.delete('confirm');
-    // Keep users on findit.html without the token sticking in the URL.
-    const clean = url.pathname.endsWith('findit.html')
+    // Keep users on amalost.html without the token sticking in the URL.
+    const clean = url.pathname.endsWith('amalost.html')
       ? `${url.pathname}${url.search}${url.hash}`
-      : `/findit.html${url.search}${url.hash}`;
+      : `/amalost.html${url.search}${url.hash}`;
     window.history.replaceState({}, '', clean);
   }
 }
@@ -1370,7 +1504,7 @@ function showExchangeConfirmResult(data) {
           <div class="contact-modal-title">Could not confirm</div>
           <div class="contact-modal-sub">${data.message}</div>
           <div class="contact-modal-actions">
-            <button type="button" class="btn-secondary" id="btn-close-contact-modal">Back to FindIt</button>
+            <button type="button" class="btn-secondary" id="btn-close-contact-modal">Back to AMAlost</button>
           </div>
         </div>
       </div>`;
@@ -1425,7 +1559,7 @@ function showExchangeConfirmResult(data) {
 
         <div class="contact-modal-actions">
           <button type="button" class="btn-emerald" id="btn-close-contact-modal">
-            ${processed ? 'Done — back to FindIt' : 'Got it — waiting for the other party'}
+            ${processed ? 'Done — back to AMAlost' : 'Got it — waiting for the other party'}
           </button>
         </div>
       </div>
@@ -1540,6 +1674,8 @@ function bindMatchEvents(selectedMatch, matches) {
       }
     });
   });
+
+  container.querySelector('#btn-expand-locations')?.addEventListener('click', () => expandLocationSearch());
 }
 
 async function claimCurrentMatch(selectedMatch) {
@@ -1588,7 +1724,7 @@ async function claimCurrentMatch(selectedMatch) {
       category: data.category || selectedMatch.category || null,
       found_location: data.found_location || null,
       lost_location: data.lost_location || null,
-      pickup_point: data.pickup_point || 'Library Information Desk',
+      pickup_point: data.pickup_point || 'Coordinate a public campus meetup',
       mail_mode: data.mail_mode || 'outbox',
       owner_mail_sent: !!data.owner_mail_sent,
       finder_mail_sent: !!data.finder_mail_sent,
@@ -1619,6 +1755,7 @@ function bindEmptyMatchEvents() {
   const container = document.getElementById('match-container');
   container.querySelector('#match-back-landing')?.addEventListener('click', () => showView('landing'));
   container.querySelector('#btn-expand-search')?.addEventListener('click', () => expandSearch());
+  container.querySelector('#btn-expand-locations')?.addEventListener('click', () => expandLocationSearch());
 }
 
 async function expandSearch() {
@@ -1629,66 +1766,248 @@ async function expandSearch() {
       <div class="category-loading-text">Searching all categories…</div>
     </div>`;
   state.match.expandAll = true;
-  await submitLostReport(true);
+  await submitLostReport(true, state.match.searchAllLocations);
+}
+
+async function expandLocationSearch() {
+  const container = document.getElementById('match-container');
+  container.innerHTML = `
+    <div class="category-loading" style="margin-top:40px">
+      <div class="spinner"></div>
+      <div class="category-loading-text">Searching all locations…</div>
+    </div>`;
+  state.match.searchAllLocations = true;
+  await submitLostReport(state.match.expandAll, true);
 }
 
 /* ─────────────────────── ADMIN QUEUE ─────────────────────── */
 
-async function openAdminQueue() {
-  showView('admin');
-  const container = document.getElementById('admin-container');
-  container.innerHTML = `
-    <div class="category-loading" style="margin-top:24px">
-      <div class="spinner"></div>
-      <div class="category-loading-text">Loading queue…</div>
+const ADMIN_TABS = [
+  { id: 'lost', label: 'Lost' },
+  { id: 'found', label: 'Found' },
+  { id: 'in_process', label: 'In process' },
+  { id: 'matched', label: 'Matched' },
+];
+
+let adminQueueData = null;
+let adminActiveTab = 'lost';
+
+function filterAdminTab(data, tabId) {
+  const lost = data.lost_items || [];
+  const found = data.found_items || [];
+  const claims = data.claims || [];
+
+  if (tabId === 'lost') {
+    return lost
+      .filter(item => item.status === 'open' || item.status === 'available')
+      .map(item => ({ kind: 'lost', ...item }));
+  }
+  if (tabId === 'found') {
+    return found
+      .filter(item => item.status === 'available' || item.status === 'open')
+      .map(item => ({ kind: 'found', ...item }));
+  }
+  if (tabId === 'in_process') {
+    return [
+      ...lost.filter(item => item.status === 'in_process').map(item => ({ kind: 'lost', ...item })),
+      ...found.filter(item => item.status === 'in_process').map(item => ({ kind: 'found', ...item })),
+      ...claims.filter(c => c.status === 'in_process').map(c => ({ kind: 'claim', ...c })),
+    ];
+  }
+  // matched / completed
+  return [
+    ...lost.filter(item => item.status === 'processed').map(item => ({ kind: 'lost', ...item })),
+    ...found.filter(item => item.status === 'processed').map(item => ({ kind: 'found', ...item })),
+    ...claims.filter(c => c.status === 'processed').map(c => ({ kind: 'claim', ...c })),
+  ];
+}
+
+function adminTabCounts(data) {
+  return Object.fromEntries(ADMIN_TABS.map(tab => [tab.id, filterAdminTab(data, tab.id).length]));
+}
+
+function renderAdminItemCard(item) {
+  const canCancel = item.status === 'in_process';
+  const actions = `
+    <div class="dash-actions">
+      ${canCancel
+        ? `<button type="button" class="btn-secondary btn-admin-action" data-admin-cancel="${escapeHTML(item.kind)}" data-id="${escapeHTML(item.id)}">Cancel exchange</button>`
+        : ''}
+      <button type="button" class="btn-cancel btn-admin-action" data-admin-delete="${escapeHTML(item.kind)}" data-id="${escapeHTML(item.id)}">Delete</button>
     </div>`;
 
-  try {
-    const res = await fetch(`${API_BASE}/queue`);
-    if (!res.ok) throw new Error('Failed to load queue');
-    const data = await res.json();
-    container.innerHTML = `
-      <button class="back-link" id="admin-back">← Back</button>
-      <div class="flow-header">
-        <div class="flow-eyebrow">Desk view</div>
-        <div class="flow-title">Campus <span>queue</span></div>
-        <p class="flow-subtitle">Found reports, lost reports, and claims currently in the system.</p>
-      </div>
-      <div class="admin-grid">
-        ${renderAdminColumn('Found items', data.found_items || [], item => `
-          <div class="admin-card">
-            <div class="admin-card-title">${getCategoryEmoji(item.category)} ${item.category}</div>
-            <div class="admin-card-body">${item.description || 'No description'}</div>
-            <div class="admin-card-meta">${item.location || '—'} · ${item.status}</div>
-          </div>`)}
-        ${renderAdminColumn('Lost items', data.lost_items || [], item => `
-          <div class="admin-card">
-            <div class="admin-card-title">${getCategoryEmoji(item.category)} ${item.category}</div>
-            <div class="admin-card-body">${item.description || 'No description'}</div>
-            <div class="admin-card-meta">${item.location || '—'} · ${item.status}</div>
-          </div>`)}
-        ${renderAdminColumn('Claims', data.claims || [], item => `
-          <div class="admin-card">
-            <div class="admin-card-title">Claim ${item.status}</div>
-            <div class="admin-card-body">${item.notify_message || 'No message'}</div>
-            <div class="admin-card-meta">${item.claimed_by_email || '—'}</div>
-            <div class="admin-card-meta">Owner ✓ ${item.owner_confirmed ? 'yes' : 'no'} · Finder ✓ ${item.finder_confirmed ? 'yes' : 'no'}</div>
-          </div>`)}
+  if (item.kind === 'claim') {
+    return `
+      <div class="dash-card">
+        <div class="dash-thumb">🔗</div>
+        <div class="dash-body">
+          <div class="dash-card-title">Claim #${escapeHTML(item.id)}</div>
+          <div class="dash-card-desc">${escapeHTML(item.notify_message || 'No message')}</div>
+          <div class="dash-card-meta">${escapeHTML(item.claimed_by_email || '—')} · lost #${escapeHTML(item.lost_item_id || '—')} · found #${escapeHTML(item.found_item_id || '—')}</div>
+          <div class="dash-pills">
+            ${statusPill(item.status)}
+            <span class="status-pill status-open">owner ${item.owner_confirmed ? '✓' : '…'}</span>
+            <span class="status-pill status-open">finder ${item.finder_confirmed ? '✓' : '…'}</span>
+          </div>
+          ${actions}
+        </div>
       </div>`;
-    document.getElementById('admin-back')?.addEventListener('click', () => showView('landing'));
-  } catch {
-    container.innerHTML = `
-      <button class="back-link" id="admin-back">← Back</button>
-      <div class="error-banner visible">Could not load the queue. Is the API running?</div>`;
-    document.getElementById('admin-back')?.addEventListener('click', () => showView('landing'));
+  }
+
+  const isLost = item.kind === 'lost';
+  const dateLabel = isLost ? (item.date_lost || '—') : (item.date_found || '—');
+  const who = isLost ? (item.email || '—') : (item.finder_email || item.reported_by || '—');
+  return `
+    <div class="dash-card">
+      <div class="dash-thumb">${item.image_url
+        ? `<img src="${API_BASE}${item.image_url}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:10px"/>`
+        : getCategoryEmoji(item.category)}</div>
+      <div class="dash-body">
+        <div class="dash-card-title">${getCategoryEmoji(item.category)} ${escapeHTML(item.category)} · ${isLost ? 'Lost' : 'Found'} #${escapeHTML(item.id)}</div>
+        <div class="dash-card-desc">${escapeHTML(item.description || 'No description')}</div>
+        <div class="dash-card-meta">${escapeHTML(item.location || 'Location n/a')} · ${escapeHTML(dateLabel)} · ${escapeHTML(who)}</div>
+        <div class="dash-pills">${statusPill(item.status)}</div>
+        ${actions}
+      </div>
+    </div>`;
+}
+
+function renderAdminDashboard(data, tabId = adminActiveTab) {
+  const container = document.getElementById('admin-container');
+  if (!container) return;
+
+  adminQueueData = data;
+  adminActiveTab = tabId;
+  const counts = adminTabCounts(data);
+  const items = filterAdminTab(data, tabId);
+
+  container.innerHTML = `
+    <button class="back-link" id="admin-back">← Landing</button>
+    <div class="flow-header">
+      <div class="flow-eyebrow">Admin</div>
+      <div class="flow-title">Campus <span>dashboard</span></div>
+      <p class="flow-subtitle">All uploaded items across campus — filter by status. Cancel reopens an exchange; Delete removes the entry.</p>
+    </div>
+    <div class="admin-tabs" role="tablist">
+      ${ADMIN_TABS.map(tab => `
+        <button type="button" class="admin-tab ${tab.id === tabId ? 'active' : ''}" data-tab="${tab.id}" role="tab" aria-selected="${tab.id === tabId}">
+          ${tab.label}
+          <span class="admin-tab-count">${counts[tab.id]}</span>
+        </button>`).join('')}
+    </div>
+    <div class="admin-tab-panel">
+      ${items.length
+        ? items.map(renderAdminItemCard).join('')
+        : '<div class="admin-empty">Nothing in this tab yet.</div>'}
+    </div>`;
+
+  document.getElementById('admin-back')?.addEventListener('click', () => showView('landing'));
+  container.querySelectorAll('.admin-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const next = btn.getAttribute('data-tab');
+      if (next && adminQueueData) renderAdminDashboard(adminQueueData, next);
+    });
+  });
+  container.querySelectorAll('[data-admin-cancel]').forEach(btn => {
+    btn.addEventListener('click', () => adminCancelEntry(btn));
+  });
+  container.querySelectorAll('[data-admin-delete]').forEach(btn => {
+    btn.addEventListener('click', () => adminDeleteEntry(btn));
+  });
+}
+
+async function adminCancelEntry(btn) {
+  const kind = btn?.dataset?.adminCancel;
+  const id = btn?.dataset?.id;
+  if (!kind || !id) return;
+  if (!window.confirm('Cancel this in-process exchange? Both linked items will reopen for matching.')) return;
+
+  const body = kind === 'claim'
+    ? { claim_id: id }
+    : kind === 'lost'
+      ? { lost_item_id: id }
+      : { found_item_id: id };
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Cancelling…'; }
+  try {
+    const res = await fetch(`${API_BASE}/admin/claim/cancel`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 401) { showView('login'); return; }
+    if (res.status === 403) { alert('Admin access required.'); return; }
+    if (!res.ok) throw new Error(apiErrorMessage(data, 'Could not cancel exchange'));
+    await openAdminQueue();
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Cancel exchange'; }
+    alert(err.message || 'Could not cancel exchange');
   }
 }
 
-function renderAdminColumn(title, items, renderItem) {
-  return `<div class="admin-column">
-    <div class="admin-column-title">${title} (${items.length})</div>
-    ${items.length ? items.map(renderItem).join('') : '<div class="admin-empty">None yet</div>'}
-  </div>`;
+async function adminDeleteEntry(btn) {
+  const kind = btn?.dataset?.adminDelete;
+  const id = btn?.dataset?.id;
+  if (!kind || !id) return;
+  const label = kind === 'claim' ? 'claim' : `${kind} item`;
+  if (!window.confirm(`Delete this ${label}? This cannot be undone.`)) return;
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Deleting…'; }
+  try {
+    const res = await fetch(`${API_BASE}/admin/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 401) { showView('login'); return; }
+    if (res.status === 403) { alert('Admin access required.'); return; }
+    if (!res.ok) throw new Error(apiErrorMessage(data, 'Could not delete entry'));
+    await openAdminQueue();
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Delete'; }
+    alert(err.message || 'Could not delete entry');
+  }
+}
+
+async function openAdminQueue() {
+  if (!auth.token) {
+    showView('login');
+    return;
+  }
+  if (!isAdminUser()) {
+    showView('landing');
+    return;
+  }
+
+  showView('admin');
+  const container = document.getElementById('admin-container');
+  if (!container) return;
+  container.innerHTML = `
+    <div class="category-loading" style="margin-top:24px">
+      <div class="spinner"></div>
+      <div class="category-loading-text">Loading admin queue…</div>
+    </div>`;
+
+  try {
+    const res = await fetch(`${API_BASE}/admin/queue`, { headers: authHeaders() });
+    if (res.status === 401) { showView('login'); return; }
+    if (res.status === 403) {
+      container.innerHTML = `
+        <button class="back-link" id="admin-back">← Landing</button>
+        <div class="error-banner visible">Admin access required.</div>`;
+      document.getElementById('admin-back')?.addEventListener('click', () => showView('landing'));
+      return;
+    }
+    if (!res.ok) throw new Error('Failed to load queue');
+    const data = await res.json();
+    renderAdminDashboard(data, adminActiveTab);
+  } catch {
+    container.innerHTML = `
+      <button class="back-link" id="admin-back">← Landing</button>
+      <div class="error-banner visible">Could not load the admin queue. Is the API running?</div>`;
+    document.getElementById('admin-back')?.addEventListener('click', () => showView('landing'));
+  }
 }
 
 /* ─────────────────────── MY DASHBOARD ─────────────────────── */
@@ -1921,10 +2240,10 @@ function buildLoginHTML() {
   const remaining = locked ? Math.ceil((loginAttempts.lockedUntil - Date.now()) / 1000) : 0;
 
   return `
-    <div class="auth-logo" id="login-brand-logo">Find<span>It</span></div>
+    <div class="auth-logo" id="login-brand-logo">AMA<span>lost</span></div>
     <div class="form-card">
       <div class="flow-eyebrow">Welcome back</div>
-      <div class="flow-title" style="margin-bottom:18px">Sign in to FindIt</div>
+      <div class="flow-title" style="margin-bottom:18px">Sign in to AMAlost</div>
       <div class="field">
         <label for="login-email">Email</label>
         <input type="email" id="login-email" placeholder="you@university.edu" autocomplete="email"/>
@@ -2021,7 +2340,7 @@ async function submitLogin() {
     loginAttempts.lockedUntil = null;
     clearLockoutTimer();
     renderNav();
-    showView('landing');
+    goHome();
   } catch (err) {
     loginAttempts.count += 1;
     if (loginAttempts.count >= 5) {
@@ -2046,7 +2365,7 @@ function buildRegisterHTML() {
         ? 'A verification email is on its way — check inbox and spam.'
         : 'We tried to send a verification email. If it does not arrive, use the link below or resend.';
     return `
-      <div class="auth-logo" id="register-brand-logo">Find<span>It</span></div>
+      <div class="auth-logo" id="register-brand-logo">AMA<span>lost</span></div>
       <div class="success-state">
         <div class="success-check">✓</div>
         <div class="success-title">Check your email</div>
@@ -2064,9 +2383,9 @@ function buildRegisterHTML() {
   }
 
   return `
-    <div class="auth-logo" id="register-brand-logo">Find<span>It</span></div>
+    <div class="auth-logo" id="register-brand-logo">AMA<span>lost</span></div>
     <div class="form-card">
-      <div class="flow-eyebrow">Join FindIt</div>
+      <div class="flow-eyebrow">Join AMAlost</div>
       <div class="flow-title" style="margin-bottom:18px">Create your account</div>
       <div class="field">
         <label for="register-name">Full name</label>
@@ -2272,9 +2591,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (auth.token) showView('landing');
   });
 
-  if (auth.token) {
-    showView('landing');
-  } else {
-    showView('login');
-  }
+  if (auth.token) goHome();
+  else showView('login');
 });

@@ -1,9 +1,3 @@
-"""Submission validation / anti-fraud constraints for lost & found tickets.
-
-Rejects empty, too-short, or deliberately vague descriptions that would otherwise
-game the embedding matcher (thesis defense: AI validation constraint).
-"""
-
 from __future__ import annotations
 
 import re
@@ -11,7 +5,7 @@ import re
 MIN_DESCRIPTION_CHARS = 8
 MIN_DESCRIPTION_TOKENS = 2
 
-# Single-token or near-empty labels that do not identify a physical item.
+# these alone don't identify a real item
 VAGUE_DESCRIPTIONS = {
     "item",
     "items",
@@ -38,7 +32,6 @@ VAGUE_DESCRIPTIONS = {
 def normalize_description(text: str | None) -> str:
     if not text:
         return ""
-    # Collapse whitespace; keep punctuation for uniqueness checks later.
     return re.sub(r"\s+", " ", text.strip())
 
 
@@ -47,7 +40,6 @@ def _tokens(text: str) -> list[str]:
 
 
 def validate_item_description(description: str | None, *, required: bool = True) -> str:
-    """Return a cleaned description or raise ValueError with a user-facing message."""
     cleaned = normalize_description(description)
     if not cleaned:
         if required:
@@ -64,7 +56,6 @@ def validate_item_description(description: str | None, *, required: bool = True)
             "(e.g. “black Casio calculator with cracked case”)."
         )
 
-    # Entire description is only vague filler words.
     meaningful = [t for t in tokens if t not in VAGUE_DESCRIPTIONS]
     if not meaningful:
         raise ValueError(
@@ -72,7 +63,7 @@ def validate_item_description(description: str | None, *, required: bool = True)
             "(color, brand, model, scratches, stickers, etc.)."
         )
 
-    # Repeated single vague word padded with junk: "item item item"
+    # e.g. "item item item"
     if set(tokens) <= VAGUE_DESCRIPTIONS:
         raise ValueError(
             "Description is too vague. Add distinctive details so matching can work "

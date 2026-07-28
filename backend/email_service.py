@@ -1,8 +1,4 @@
-"""Email notifications for FindIt.
-
-Uses SMTP when configured; otherwise writes messages to backend/mail_outbox/
-so thesis demos can prove notifications without a live mail server.
-"""
+# SMTP if configured, otherwise write to mail_outbox/ for demos
 
 from __future__ import annotations
 
@@ -16,7 +12,7 @@ import ssl
 
 from config import settings
 
-logger = logging.getLogger("findit.mail")
+logger = logging.getLogger("amalost.mail")
 
 OUTBOX_DIR = Path(__file__).resolve().parent / "mail_outbox"
 OUTBOX_DIR.mkdir(exist_ok=True)
@@ -24,26 +20,28 @@ OUTBOX_DIR.mkdir(exist_ok=True)
 ANTI_FRAUD_TIPS_TEXT = """\
 Safety & anti-fraud tips
 ------------------------
-• Meet only at the Library Information Desk (or another staffed campus office).
+• Coordinate pickup directly with the other party — AMAlost does not hold items for you.
+• Meet in a public campus spot you both agree on (e.g. Library entrance).
 • Do not send money, gift cards, courier fees, or deposit payments.
 • Verify the item carefully before handing it over (photos, marks, contents, serials).
 • Ask the claimant to describe a private detail that is not visible in the public listing.
-• Bring a campus ID. Prefer daylight / staffed hours.
+• Bring a campus ID. Prefer daylight hours.
 • If anything feels wrong, stop the exchange and contact campus security.
-• FindIt never asks for your password by email.
+• AMAlost never asks for your password by email.
 """
 
 ANTI_FRAUD_TIPS_HTML = """
 <div style="margin-top:20px;padding:16px 18px;border-radius:12px;background:#FFF7ED;border:1px solid #FED7AA;">
   <div style="font-size:13px;font-weight:700;color:#9A3412;margin-bottom:8px;">Safety &amp; anti-fraud tips</div>
   <ul style="margin:0;padding-left:18px;color:#9A3412;font-size:13px;line-height:1.55;">
-    <li>Meet only at the Library Information Desk (or another staffed campus office).</li>
+    <li>Coordinate pickup directly — AMAlost does not hold items for you.</li>
+    <li>Meet in a public campus spot you both agree on.</li>
     <li>Never send money, gift cards, courier fees, or deposits.</li>
     <li>Verify the item carefully (photos, marks, contents, serials).</li>
     <li>Ask for a private detail not visible in the public listing.</li>
-    <li>Bring campus ID. Prefer daylight / staffed hours.</li>
+    <li>Bring campus ID. Prefer daylight hours.</li>
     <li>If anything feels wrong, stop and contact campus security.</li>
-    <li>FindIt will never ask for your password by email.</li>
+    <li>AMAlost will never ask for your password by email.</li>
   </ul>
 </div>
 """
@@ -85,7 +83,7 @@ def _wrap_html(*, title: str, eyebrow: str, body_html: str, cta_url: str | None 
           <tr>
             <td style="background:linear-gradient(135deg,#4F46E5,#6366F1);padding:22px 24px;color:#fff;">
               <div style="font-size:12px;letter-spacing:0.08em;text-transform:uppercase;opacity:0.9;">{escape(eyebrow)}</div>
-              <div style="font-size:22px;font-weight:800;margin-top:6px;">Find<span style="opacity:0.85;">It</span></div>
+              <div style="font-size:22px;font-weight:800;margin-top:6px;">AMA<span style="opacity:0.85;">lost</span></div>
               <div style="font-size:16px;font-weight:700;margin-top:10px;">{escape(title)}</div>
             </td>
           </tr>
@@ -99,7 +97,7 @@ def _wrap_html(*, title: str, eyebrow: str, body_html: str, cta_url: str | None 
           <tr>
             <td style="padding:14px 24px 20px;background:#F8FAFC;color:#64748B;font-size:12px;line-height:1.5;">
               Campus Lost &amp; Found · Library Information Desk<br/>
-              This message was sent automatically by FindIt.
+              This message was sent automatically by AMAlost.
             </td>
           </tr>
         </table>
@@ -131,11 +129,10 @@ def send_email(
     html_body: str | None = None,
     reply_to: str | None = None,
 ) -> dict:
-    """Send an email. Returns delivery metadata for claim/notify logging."""
     if not to:
         return {"sent": False, "reason": "missing_recipient", "to": None, "mode": mail_delivery_mode()}
 
-    from_addr = getattr(settings, "smtp_from", None) or "FindIt <noreply@findit.local>"
+    from_addr = getattr(settings, "smtp_from", None) or "AMAlost <noreply@amalost.local>"
     message = EmailMessage()
     message["Subject"] = subject
     message["From"] = from_addr
@@ -206,18 +203,18 @@ def notify_email_verification(*, to_email: str, name: str | None, verify_url: st
     display_name = (name or "").strip() or "there"
     text_body = (
         f"Hi {display_name},\n\n"
-        f"Welcome to FindIt — AMA University's campus lost & found.\n\n"
+        f"Welcome to AMAlost — AMA University's campus lost & found.\n\n"
         f"Please verify your email to activate your account:\n"
         f"{verify_url}\n\n"
         f"If you did not create this account, you can ignore this message.\n\n"
-        f"— FindIt Campus Lost & Found\n"
+        f"— AMAlost Campus Lost & Found\n"
     )
     html_body = _wrap_html(
-        title="Verify your FindIt email",
+        title="Verify your AMAlost email",
         eyebrow="Account verification",
         body_html=(
             f"<p>Hi {escape(display_name)},</p>"
-            f"<p>Welcome to FindIt. Confirm your email to activate your account and start "
+            f"<p>Welcome to AMAlost. Confirm your email to activate your account and start "
             f"reporting lost or found items.</p>"
             f"<p style='margin-top:14px;color:#64748B;font-size:13px;'>"
             f"If you did not create this account, you can ignore this message.</p>"
@@ -227,7 +224,7 @@ def notify_email_verification(*, to_email: str, name: str | None, verify_url: st
     )
     return send_email(
         to_email,
-        "Verify your FindIt account",
+        "Verify your AMAlost account",
         text_body,
         html_body=html_body,
     )
@@ -237,20 +234,20 @@ def notify_match_to_owner(*, owner_email: str, category: str, match_count: int, 
     score_text = f"{top_score:.0%}" if top_score is not None else "n/a"
     text_body = (
         f"Hi,\n\n"
-        f"FindIt found {match_count} possible match(es) for your lost {category}.\n"
+        f"AMAlost found {match_count} possible match(es) for your lost {category}.\n"
         f"Top confidence: {score_text}.\n\n"
-        f"Open FindIt to review the matches and claim your item at the Library Information Desk.\n\n"
-        f"— FindIt Campus Lost & Found\n"
+        f"Open AMAlost to review the matches and claim your item at the Library Information Desk.\n\n"
+        f"— AMAlost Campus Lost & Found\n"
     )
     html_body = _wrap_html(
         title=f"Possible match for your {category}",
         eyebrow="Match alert",
         body_html=(
             f"<p>Hi,</p>"
-            f"<p>FindIt found <strong>{match_count}</strong> possible match(es) for your lost "
+            f"<p>AMAlost found <strong>{match_count}</strong> possible match(es) for your lost "
             f"<strong>{escape(category)}</strong>.</p>"
             f"<p>Top confidence: <strong>{escape(score_text)}</strong>.</p>"
-            f"<p>Open FindIt to review and claim at the Library Information Desk.</p>"
+            f"<p>Open AMAlost to review and claim at the Library Information Desk.</p>"
         ),
     )
     return send_email(
@@ -267,7 +264,7 @@ def notify_match_to_finder(*, finder_email: str, category: str, location: str | 
         f"Someone reported a lost {category} that may match the item you found"
         f"{f' at {location}' if location else ''}.\n\n"
         f"If they claim it, we'll email you again with pickup details.\n\n"
-        f"— FindIt Campus Lost & Found\n"
+        f"— AMAlost Campus Lost & Found\n"
     )
     html_body = _wrap_html(
         title=f"A lost report may match your found {category}",
@@ -300,7 +297,7 @@ def notify_match_accepted_to_owner(
 ) -> dict:
     text_body = (
         f"Hi,\n\n"
-        f"Good news — your FindIt match for the {category} was accepted.\n"
+        f"Good news — your AMAlost match for the {category} was accepted.\n"
         f"Status is now: IN PROCESS.\n\n"
         f"Finder name: {finder_name or 'Anonymous'}\n"
         f"Finder email: {finder_email}\n"
@@ -309,14 +306,14 @@ def notify_match_accepted_to_owner(
         f"Suggested meetup: {pickup_point}\n\n"
         f"After a successful exchange, confirm here:\n{confirm_url}\n\n"
         f"{ANTI_FRAUD_TIPS_TEXT}\n"
-        f"— FindIt Campus Lost & Found\n"
+        f"— AMAlost Campus Lost & Found\n"
     )
     html_body = _wrap_html(
         title=f"Match accepted for your {category}",
         eyebrow="Status: In process",
         body_html=(
             f"<p>Hi,</p>"
-            f"<p>Your FindIt match was accepted. Coordinate with the finder, then confirm when the exchange is done.</p>"
+            f"<p>Your AMAlost match was accepted. Coordinate with the finder, then confirm when the exchange is done.</p>"
             f"{_detail_rows([
                 ('Finder name', finder_name or 'Anonymous'),
                 ('Finder email', finder_email),
@@ -331,7 +328,7 @@ def notify_match_accepted_to_owner(
     )
     return send_email(
         owner_email,
-        f"FindIt match accepted — contact finder for your {category}",
+        f"AMAlost match accepted — contact finder for your {category}",
         text_body,
         html_body=html_body,
         reply_to=finder_email if finder_email != "not provided" else None,
@@ -360,7 +357,7 @@ def notify_match_accepted_to_finder(
         f"Suggested meetup: {pickup_point}\n\n"
         f"After a successful exchange, confirm here:\n{confirm_url}\n\n"
         f"{ANTI_FRAUD_TIPS_TEXT}\n"
-        f"— FindIt Campus Lost & Found\n"
+        f"— AMAlost Campus Lost & Found\n"
     )
     html_body = _wrap_html(
         title=f"Owner claimed your found {category}",
@@ -381,7 +378,7 @@ def notify_match_accepted_to_finder(
     )
     return send_email(
         finder_email,
-        f"FindIt match accepted — contact owner for your found {category}",
+        f"AMAlost match accepted — contact owner for your found {category}",
         text_body,
         html_body=html_body,
         reply_to=owner_email,
@@ -401,8 +398,8 @@ def notify_exchange_cancelled(
         f"{f' by {cancelled_by}' if cancelled_by else ''}.\n\n"
         f"Both items are open again for matching, so the listing may be re-matched or re-claimed.\n"
         f"Other party on file: {other_party_email or 'n/a'}\n\n"
-        f"If this was a mistake, you can restart the match from FindIt.\n\n"
-        f"— FindIt Campus Lost & Found\n"
+        f"If this was a mistake, you can restart the match from AMAlost.\n\n"
+        f"— AMAlost Campus Lost & Found\n"
     )
     html_body = _wrap_html(
         title=f"Exchange cancelled for {category}",
@@ -416,12 +413,12 @@ def notify_exchange_cancelled(
                 ('Item', category),
                 ('Other party', other_party_email or 'n/a'),
             ])}"
-            f"<p style='margin-top:14px;'>If this was a mistake, restart the match from FindIt.</p>"
+            f"<p style='margin-top:14px;'>If this was a mistake, restart the match from AMAlost.</p>"
         ),
     )
     return send_email(
         to_email,
-        f"FindIt exchange cancelled — {category}",
+        f"AMAlost exchange cancelled — {category}",
         text_body,
         html_body=html_body,
     )
@@ -439,8 +436,8 @@ def notify_exchange_processed(
         f"Status is now: PROCESSED.\n\n"
         f"This item will no longer appear in open lost/found matching lists.\n"
         f"Other party on file: {other_party_email or 'n/a'}\n\n"
-        f"Thank you for using FindIt.\n\n"
-        f"— FindIt Campus Lost & Found\n"
+        f"Thank you for using AMAlost.\n\n"
+        f"— AMAlost Campus Lost & Found\n"
     )
     html_body = _wrap_html(
         title=f"{category} marked processed",
@@ -452,12 +449,12 @@ def notify_exchange_processed(
                 ('Item', category),
                 ('Other party', other_party_email or 'n/a'),
             ])}"
-            f"<p style='margin-top:14px;'>This item will no longer appear in open lost/found matching lists. Thank you for using FindIt.</p>"
+            f"<p style='margin-top:14px;'>This item will no longer appear in open lost/found matching lists. Thank you for using AMAlost.</p>"
         ),
     )
     return send_email(
         to_email,
-        f"FindIt exchange complete — {category} marked processed",
+        f"AMAlost exchange complete — {category} marked processed",
         text_body,
         html_body=html_body,
     )
