@@ -1,4 +1,4 @@
-# SMTP if configured, otherwise write to mail_outbox/ for demos
+# SMTP if configured, otherwise write HTML/text to mail_outbox/
 
 from __future__ import annotations
 
@@ -20,11 +20,11 @@ OUTBOX_DIR.mkdir(exist_ok=True)
 ANTI_FRAUD_TIPS_TEXT = """\
 Safety & anti-fraud tips
 ------------------------
-• Coordinate pickup directly with the other party — AMAlost does not hold items for you.
-• Meet in a public campus spot you both agree on (e.g. Library entrance).
+• Complete the exchange through the campus lost-and-found desk — staff mediate custody.
+• Contact each other only to coordinate turning the item in / claiming at the desk.
 • Do not send money, gift cards, courier fees, or deposit payments.
-• Verify the item carefully before handing it over (photos, marks, contents, serials).
-• Ask the claimant to describe a private detail that is not visible in the public listing.
+• For phones/gadgets, verify serial numbers or distinctive marks with staff.
+• Verify the item carefully before handover (photos, marks, contents, serials).
 • Bring a campus ID. Prefer daylight hours.
 • If anything feels wrong, stop the exchange and contact campus security.
 • AMAlost never asks for your password by email.
@@ -34,11 +34,11 @@ ANTI_FRAUD_TIPS_HTML = """
 <div style="margin-top:20px;padding:16px 18px;border-radius:12px;background:#FFF7ED;border:1px solid #FED7AA;">
   <div style="font-size:13px;font-weight:700;color:#9A3412;margin-bottom:8px;">Safety &amp; anti-fraud tips</div>
   <ul style="margin:0;padding-left:18px;color:#9A3412;font-size:13px;line-height:1.55;">
-    <li>Coordinate pickup directly — AMAlost does not hold items for you.</li>
-    <li>Meet in a public campus spot you both agree on.</li>
+    <li>Complete the exchange through the campus lost-and-found desk — staff mediate custody.</li>
+    <li>Coordinate only to turn the item in / claim it at the desk.</li>
     <li>Never send money, gift cards, courier fees, or deposits.</li>
+    <li>For phones/gadgets, verify serial numbers or distinctive marks with staff.</li>
     <li>Verify the item carefully (photos, marks, contents, serials).</li>
-    <li>Ask for a private detail not visible in the public listing.</li>
     <li>Bring campus ID. Prefer daylight hours.</li>
     <li>If anything feels wrong, stop and contact campus security.</li>
     <li>AMAlost will never ask for your password by email.</li>
@@ -49,6 +49,11 @@ ANTI_FRAUD_TIPS_HTML = """
 
 def smtp_configured() -> bool:
     return bool(getattr(settings, "smtp_host", None))
+
+
+def _smtp_password() -> str:
+    # Gmail app passwords are often stored with spaces; SMTP auth expects none.
+    return (getattr(settings, "smtp_password", None) or "").replace(" ", "")
 
 
 def mail_delivery_mode() -> str:
@@ -132,7 +137,7 @@ def send_email(
     if not to:
         return {"sent": False, "reason": "missing_recipient", "to": None, "mode": mail_delivery_mode()}
 
-    from_addr = getattr(settings, "smtp_from", None) or "AMAlost <noreply@amalost.local>"
+    from_addr = getattr(settings, "smtp_from", None) or "AMAlost <noreply@ama.edu.ph>"
     message = EmailMessage()
     message["Subject"] = subject
     message["From"] = from_addr
@@ -156,7 +161,7 @@ def send_email(
             host = settings.smtp_host
             port = int(getattr(settings, "smtp_port", 587) or 587)
             user = getattr(settings, "smtp_user", None) or ""
-            password = getattr(settings, "smtp_password", None) or ""
+            password = _smtp_password()
             use_tls = bool(getattr(settings, "smtp_tls", True))
 
             if use_tls:
@@ -176,10 +181,14 @@ def send_email(
             logger.info("SMTP mail sent to %s (%s)", to, subject)
             return meta
         except Exception as exc:
-            logger.exception("SMTP send failed; falling back to outbox: %s", exc)
+            # SMTP configured: never fall back to outbox.
+            logger.exception("SMTP send failed (no outbox fallback): %s", exc)
             meta["smtp_error"] = str(exc)
-            meta["mode"] = "outbox"
+            meta["sent"] = False
+            meta["mode"] = "smtp"
+            return meta
 
+    # Dev-only fallback when SMTP is not configured
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     safe_to = to.replace("@", "_at_").replace("/", "_")
     path = OUTBOX_DIR / f"{stamp}_{safe_to}.txt"
@@ -236,7 +245,7 @@ def notify_match_to_owner(*, owner_email: str, category: str, match_count: int, 
         f"Hi,\n\n"
         f"AMAlost found {match_count} possible match(es) for your lost {category}.\n"
         f"Top confidence: {score_text}.\n\n"
-        f"Open AMAlost to review the matches and claim your item at the Library Information Desk.\n\n"
+        f"Open AMAlost → My items → Search again on that report to review matches and claim.\n\n"
         f"— AMAlost Campus Lost & Found\n"
     )
     html_body = _wrap_html(
@@ -247,7 +256,7 @@ def notify_match_to_owner(*, owner_email: str, category: str, match_count: int, 
             f"<p>AMAlost found <strong>{match_count}</strong> possible match(es) for your lost "
             f"<strong>{escape(category)}</strong>.</p>"
             f"<p>Top confidence: <strong>{escape(score_text)}</strong>.</p>"
-            f"<p>Open AMAlost to review and claim at the Library Information Desk.</p>"
+            f"<p>Open <strong>AMAlost → My items → Search again</strong> on that report to review and claim.</p>"
         ),
     )
     return send_email(
@@ -263,7 +272,7 @@ def notify_match_to_finder(*, finder_email: str, category: str, location: str | 
         f"Hi,\n\n"
         f"Someone reported a lost {category} that may match the item you found"
         f"{f' at {location}' if location else ''}.\n\n"
-        f"If they claim it, we'll email you again with pickup details.\n\n"
+        f"Open AMAlost → My items → Search again on that found report to review and accept.\n\n"
         f"— AMAlost Campus Lost & Found\n"
     )
     html_body = _wrap_html(
@@ -273,7 +282,8 @@ def notify_match_to_finder(*, finder_email: str, category: str, location: str | 
             f"<p>Hi,</p>"
             f"<p>Someone reported a lost <strong>{escape(category)}</strong> that may match the item you found"
             f"{f' at <strong>{escape(location)}</strong>' if location else ''}.</p>"
-            f"<p>If they claim it, we’ll email you again with pickup details.</p>"
+            f"<p>Open <strong>AMAlost → My items → Search again</strong> on that found report to review and accept.</p>"
+            f"<p>If you accept a match, we’ll email both parties and route the handover through the campus lost-and-found desk.</p>"
         ),
     )
     return send_email(
@@ -292,7 +302,6 @@ def notify_match_accepted_to_owner(
     category: str,
     found_location: str | None,
     lost_location: str | None,
-    pickup_point: str,
     confirm_url: str,
 ) -> dict:
     text_body = (
@@ -302,9 +311,9 @@ def notify_match_accepted_to_owner(
         f"Finder name: {finder_name or 'Anonymous'}\n"
         f"Finder email: {finder_email}\n"
         f"Found location: {found_location or 'n/a'}\n"
-        f"Lost location: {lost_location or 'n/a'}\n"
-        f"Suggested meetup: {pickup_point}\n\n"
-        f"After a successful exchange, confirm here:\n{confirm_url}\n\n"
+        f"Lost location: {lost_location or 'n/a'}\n\n"
+        f"Bring/claim the item at the campus lost-and-found desk. Staff mediate custody before the case is closed.\n\n"
+        f"After desk release, you may confirm here:\n{confirm_url}\n\n"
         f"{ANTI_FRAUD_TIPS_TEXT}\n"
         f"— AMAlost Campus Lost & Found\n"
     )
@@ -313,13 +322,12 @@ def notify_match_accepted_to_owner(
         eyebrow="Status: In process",
         body_html=(
             f"<p>Hi,</p>"
-            f"<p>Your AMAlost match was accepted. Coordinate with the finder, then confirm when the exchange is done.</p>"
+            f"<p>Your AMAlost match was accepted. Complete handover at the campus lost-and-found desk; staff must receive and release the item.</p>"
             f"{_detail_rows([
                 ('Finder name', finder_name or 'Anonymous'),
                 ('Finder email', finder_email),
                 ('Found location', found_location or 'n/a'),
                 ('Lost location', lost_location or 'n/a'),
-                ('Meetup', pickup_point),
             ])}"
             f"<p style='margin-top:16px;color:#334155;'>Both parties must confirm before the item is marked <strong>processed</strong>.</p>"
         ),
@@ -343,7 +351,6 @@ def notify_match_accepted_to_finder(
     category: str,
     found_location: str | None,
     lost_location: str | None,
-    pickup_point: str,
     confirm_url: str,
 ) -> dict:
     greeting = f"Hi {finder_name}," if finder_name else "Hi,"
@@ -353,9 +360,9 @@ def notify_match_accepted_to_finder(
         f"Status is now: IN PROCESS.\n\n"
         f"Owner email: {owner_email}\n"
         f"Found location: {found_location or 'n/a'}\n"
-        f"Lost location: {lost_location or 'n/a'}\n"
-        f"Suggested meetup: {pickup_point}\n\n"
-        f"After a successful exchange, confirm here:\n{confirm_url}\n\n"
+        f"Lost location: {lost_location or 'n/a'}\n\n"
+        f"Bring/claim the item at the campus lost-and-found desk. Staff mediate custody before the case is closed.\n\n"
+        f"After desk release, you may confirm here:\n{confirm_url}\n\n"
         f"{ANTI_FRAUD_TIPS_TEXT}\n"
         f"— AMAlost Campus Lost & Found\n"
     )
@@ -364,12 +371,11 @@ def notify_match_accepted_to_finder(
         eyebrow="Status: In process",
         body_html=(
             f"<p>{escape(greeting.rstrip(','))},</p>"
-            f"<p>Please verify they are the rightful owner, coordinate pickup, then confirm when the exchange is done.</p>"
+            f"<p>Please verify they are the rightful owner at the campus desk. Staff mediate custody before the listing is closed.</p>"
             f"{_detail_rows([
                 ('Owner email', owner_email),
                 ('Found location', found_location or 'n/a'),
                 ('Lost location', lost_location or 'n/a'),
-                ('Meetup', pickup_point),
             ])}"
             f"<p style='margin-top:16px;color:#334155;'>Both parties must confirm before the listing is marked <strong>processed</strong>.</p>"
         ),
@@ -419,42 +425,6 @@ def notify_exchange_cancelled(
     return send_email(
         to_email,
         f"AMAlost exchange cancelled — {category}",
-        text_body,
-        html_body=html_body,
-    )
-
-
-def notify_exchange_processed(
-    *,
-    to_email: str,
-    category: str,
-    other_party_email: str | None,
-) -> dict:
-    text_body = (
-        f"Hi,\n\n"
-        f"Both parties confirmed the exchange for the {category}.\n"
-        f"Status is now: PROCESSED.\n\n"
-        f"This item will no longer appear in open lost/found matching lists.\n"
-        f"Other party on file: {other_party_email or 'n/a'}\n\n"
-        f"Thank you for using AMAlost.\n\n"
-        f"— AMAlost Campus Lost & Found\n"
-    )
-    html_body = _wrap_html(
-        title=f"{category} marked processed",
-        eyebrow="Exchange complete",
-        body_html=(
-            f"<p>Hi,</p>"
-            f"<p>Both parties confirmed the exchange. Status is now <strong>processed</strong>.</p>"
-            f"{_detail_rows([
-                ('Item', category),
-                ('Other party', other_party_email or 'n/a'),
-            ])}"
-            f"<p style='margin-top:14px;'>This item will no longer appear in open lost/found matching lists. Thank you for using AMAlost.</p>"
-        ),
-    )
-    return send_email(
-        to_email,
-        f"AMAlost exchange complete — {category} marked processed",
         text_body,
         html_body=html_body,
     )

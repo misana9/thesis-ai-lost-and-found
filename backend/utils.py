@@ -1,14 +1,15 @@
 from pwdlib import PasswordHash
-import schemas
 
 password_hash = PasswordHash.recommended()
 
+
 def hash_password(plain):
     return password_hash.hash(plain)
+
 
 def verify_password(plain_password, hashed_password):
     return password_hash.verify(plain_password, hashed_password)
 
 
-def authenticate_user(db, user: schemas.user, password):
+def authenticate_user(user, password):
     return verify_password(password, user.password)

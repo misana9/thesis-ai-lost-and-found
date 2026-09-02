@@ -12,6 +12,14 @@ CATEGORIES = [
     "Other",
 ]
 
+# Categories that often have a serial/IMEI. Used only to pre-check high-value
+# and prompt for serial/marks — not as automatic identity proof.
+SERIAL_LIKELY_CATEGORIES = {
+    "Gadgets",
+    "Electronics",
+    "Gadget Accessories",
+}
+
 CATEGORY_PROMPTS = {
     "Backpack / Bag": "a photo of a backpack or bag",
     "Gadgets": "a photo of a personal gadget such as a phone, tablet, iPad, laptop, or smartwatch",

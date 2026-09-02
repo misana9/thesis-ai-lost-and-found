@@ -5,3 +5,7 @@ backend/mail_outbox/
 backend/uploads/
 Objects
 manuscript
+dataset/checkpoints/
+dataset/eval_results.json
+dataset/
+test/

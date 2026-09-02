@@ -1,7 +1,7 @@
 # An AI-Powered Lost and Found Matching Algorithm Using Image Embedding Generation and Semantic Similarity Analysis
 
 **Chapters 1–3**  
-**System:** FindIt  
+**System:** AMAlost  
 **Institution:** AMA University  
 
 ---
@@ -15,7 +15,7 @@ Campus communities lose personal property every day. Phones, earphones, IDs, cal
 
 The core technical weakness is comparison. A finder may turn in a photo of a black backpack; an owner may type a short note with different wording. Staff must mentally bridge that gap. Keyword search cannot, because it rewards shared strings rather than shared meaning. A stronger approach is to map images and text into a common numerical space, then rank likely pairs by similarity.
 
-This thesis develops that approach as **FindIt**, a web-based institutional lost-and-found matcher. FindIt encodes submissions with CLIP ViT-B/32, stores 512-dimensional embeddings in PostgreSQL with pgvector, and ranks candidates using cosine similarity plus a weighted multimodal scoring policy. Users receive an ordered shortlist above confidence thresholds and confirm a claim before the system treats the pair as accepted and sends coordination email. The research contribution is the matching algorithm and the surrounding ticket workflow, not a redesign of physical storage hardware.
+This thesis develops that approach as **AMAlost**, a web-based institutional lost-and-found matcher. AMAlost encodes submissions with CLIP ViT-B/32, stores 512-dimensional embeddings in PostgreSQL with pgvector, and ranks candidates using cosine similarity plus a weighted multimodal scoring policy. Users receive an ordered shortlist above confidence thresholds and confirm a claim before the system treats the pair as accepted and sends coordination email. The research contribution is the matching algorithm and the surrounding ticket workflow, not a redesign of physical storage hardware.
 
 ## 1.2 Background of the Study
 
@@ -56,13 +56,13 @@ To develop an AI-powered lost-and-found matching algorithm that uses image embed
 
 ## 1.6 Scope and Delimitation
 
-**In scope.** FindIt web client; FastAPI services; PostgreSQL/pgvector storage; CLIP ViT-B/32 encoding; multimodal ranking with tiers and trimming; claim confirmation; email/outbox notifications for claim events; desktop and mobile browser access.
+**In scope.** AMAlost web client; FastAPI services; PostgreSQL/pgvector storage; CLIP ViT-B/32 encoding; multimodal ranking with tiers and trimming; claim confirmation; email/outbox notifications for claim events; desktop and mobile browser access.
 
 **Delimitation.** The system does not perform live camera surveillance, GPS tracking of items, or automated physical locker control. Matching quality depends on submission quality and on the pretrained encoder. Legal ownership disputes remain outside the software. Prototype mail may use a local outbox unless SMTP is configured.
 
 ## 1.7 Conceptual Framework
 
-FindIt follows an Input–Process–Output flow.
+AMAlost follows an Input–Process–Output flow.
 
 | Stage | Content |
 |---|---|
@@ -74,7 +74,7 @@ Human confirmation is part of the process: AI retrieves and ranks; users accept 
 
 ## 1.8 Definition of Terms
 
-**FindIt** — The prototype platform implementing the proposed matching algorithm and ticket workflows.  
+**AMAlost** — The prototype platform implementing the proposed matching algorithm and ticket workflows.  
 
 **CLIP ViT-B/32** — Contrastive vision–language model used to embed images and text into a shared 512-d space.  
 
@@ -101,11 +101,11 @@ Published accounts of university lost-and-found practice repeatedly describe bri
 
 ## 2.2 Digital Lost-and-Found Applications
 
-Web and mobile lost-and-found systems improve intake, categorization, and alerts (Kim et al., 2019; Gupta & Sharma, 2020; Pandey et al., 2020; Castro et al., 2022; Shrivastava et al., 2025; Salman, 2022). Their common ceiling is matching logic. Many remain keyword- or staff-driven after the form is submitted. FindIt treats digital ticketing as necessary infrastructure and focuses research effort on embedding-based ranking between tickets.
+Web and mobile lost-and-found systems improve intake, categorization, and alerts (Kim et al., 2019; Gupta & Sharma, 2020; Pandey et al., 2020; Castro et al., 2022; Shrivastava et al., 2025; Salman, 2022). Their common ceiling is matching logic. Many remain keyword- or staff-driven after the form is submitted. AMAlost treats digital ticketing as necessary infrastructure and focuses research effort on embedding-based ranking between tickets.
 
 ## 2.3 Image Embedding and Vision–Language Similarity
 
-Contrastive language–image training produces encoders that support cross-modal retrieval with cosine similarity (Radford et al., 2021; Peng, 2025). Vision Transformer backbones such as ViT-B/32 are standard image towers in this family. Extensions examine efficiency, robustness, and finer representations (Li et al., 2022; Fang et al., 2022; Cui et al., 2022; Dong et al., 2026). For FindIt, these results justify CLIP as the feature generator. They also caution against treating raw similarity as a final authority when campus photos are noisy and many items look alike.
+Contrastive language–image training produces encoders that support cross-modal retrieval with cosine similarity (Radford et al., 2021; Peng, 2025). Vision Transformer backbones such as ViT-B/32 are standard image towers in this family. Extensions examine efficiency, robustness, and finer representations (Li et al., 2022; Fang et al., 2022; Cui et al., 2022; Dong et al., 2026). For AMAlost, these results justify CLIP as the feature generator. They also caution against treating raw similarity as a final authority when campus photos are noisy and many items look alike.
 
 ## 2.4 Ranking, Thresholds, and Human-in-the-Loop Decisions
 
@@ -113,7 +113,7 @@ Information retrieval practice favors ranked lists and early-rank metrics when q
 
 ## 2.5 Synthesis
 
-Prior work supplies three ingredients FindIt combines: institutional need for better comparison, digital tickets/notifications as the service shell, and CLIP-style embeddings as the similarity engine. The gap is an end-to-end campus matcher that defines multimodal fusion, thresholds, bidirectional search, ranked user choice, and confirmation-triggered coordination. Chapter 3 specifies the technical platform used to close that gap.
+Prior work supplies three ingredients AMAlost combines: institutional need for better comparison, digital tickets/notifications as the service shell, and CLIP-style embeddings as the similarity engine. The gap is an end-to-end campus matcher that defines multimodal fusion, thresholds, bidirectional search, ranked user choice, and confirmation-triggered coordination. Chapter 3 specifies the technical platform used to close that gap.
 
 ---
 
@@ -122,7 +122,7 @@ Prior work supplies three ingredients FindIt combines: institutional need for be
 
 ## 3.1 Overview
 
-FindIt is a three-service prototype: a static web frontend, a FastAPI application that runs CLIP and business logic, and PostgreSQL with pgvector for relational data and embeddings. Docker Compose orchestrates local deployment.
+AMAlost is a three-service prototype: a static web frontend, a FastAPI application that runs CLIP and business logic, and PostgreSQL with pgvector for relational data and embeddings. Docker Compose orchestrates local deployment.
 
 ## 3.2 Hardware Requirements
 
@@ -148,7 +148,7 @@ FindIt is a three-service prototype: a static web frontend, a FastAPI applicatio
 
 ### 3.3.1 Frontend
 
-- Static FindIt UI (`HTML`/`JavaScript`) served by nginx  
+- Static AMAlost UI (`HTML`/`JavaScript`) served by nginx  
 - Flows: register/login, report lost, report found, review ranked matches, confirm claims, inspect queues  
 
 ### 3.3.2 Backend and Data
@@ -192,7 +192,7 @@ FindIt is a three-service prototype: a static web frontend, a FastAPI applicatio
 ## 3.5 System Architecture
 
 ```
-[Browser: FindIt UI]
+[Browser: AMAlost UI]
         |  HTTP/REST
         v
 [FastAPI: auth, tickets, claims, CLIP encode + rank]

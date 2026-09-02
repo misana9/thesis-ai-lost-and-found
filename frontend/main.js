@@ -1,11 +1,33 @@
 /* ─────────────────────────────────────────────
-   AMAlost — app.js
+   AMAlost — main.js
    All view logic, state, and API calls.
    No inline event handlers — everything is
    wired via addEventListener after DOM ready.
 ───────────────────────────────────────────── */
 
-const API_BASE = 'http://localhost:8000';
+function resolveApiBase() {
+  const cfg = window.AMALOST_CONFIG && window.AMALOST_CONFIG.apiBase;
+  if (typeof cfg === 'string' && cfg.trim()) return cfg.replace(/\/$/, '');
+  const stored = localStorage.getItem('amalost_api_base');
+  if (stored && stored.trim()) return stored.replace(/\/$/, '');
+  const { protocol, hostname } = window.location;
+  return `${protocol}//${hostname}:8000`;
+}
+
+const API_BASE = resolveApiBase();
+
+/** Absolute media URL with JWT query param (img tags cannot send Authorization). */
+function mediaUrl(pathOrUrl) {
+  if (!pathOrUrl) return null;
+  if (pathOrUrl.startsWith('blob:') || pathOrUrl.startsWith('data:')) return pathOrUrl;
+  let url = pathOrUrl;
+  if (!/^https?:\/\//i.test(pathOrUrl)) {
+    const path = pathOrUrl.startsWith('/') ? pathOrUrl : `/${pathOrUrl}`;
+    url = `${API_BASE}${path}`;
+  }
+  if (!auth.token || /[?&]token=/.test(url)) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(auth.token)}`;
+}
 
 const CATEGORIES = [
   { name: 'Backpack / Bag',     emoji: '🎒' },
@@ -20,6 +42,36 @@ const CATEGORIES = [
   { name: 'Clothing',           emoji: '👕' },
   { name: 'Other',              emoji: '📦' },
 ];
+
+const SERIAL_LIKELY_CATEGORIES = new Set(['Gadgets', 'Electronics', 'Gadget Accessories']);
+
+function categoryUsuallyHasSerial(name) {
+  return SERIAL_LIKELY_CATEGORIES.has(name);
+}
+
+function applyHighValueHintFromCategory(flow, categoryName) {
+  const s = state[flow];
+  if (!s) return;
+  s.isHighValue = categoryUsuallyHasSerial(categoryName);
+}
+
+function serialStatusLabel(status) {
+  const map = {
+    match: '✓ Serials match — staff will verify at the desk',
+    partial: '~ Serials partly match — verify at the desk',
+    mismatch: '⚠ Serials differ — staff must verify before release',
+    one_sided: '○ Only one side has a serial — desk check recommended',
+    missing: '○ No serials on file',
+    unknown: '○ Serial not compared',
+  };
+  return map[status] || map.unknown;
+}
+
+function serialStatusClass(status) {
+  if (status === 'match') return 'same';
+  if (status === 'mismatch') return 'diff';
+  return '';
+}
 
 /** Where an item was discovered (found) or places visited that day (lost). */
 const CAMPUS_LOCATIONS = [
@@ -97,6 +149,9 @@ const state = {
     location: [],
     dateLost: '',
     email: '',
+    isHighValue: false,
+    serialNumber: '',
+    distinctiveMarks: '',
   },
   found: {
     step: 'photo',
@@ -109,6 +164,9 @@ const state = {
     location: '',
     dateFound: '',
     email: '',
+    isHighValue: false,
+    serialNumber: '',
+    distinctiveMarks: '',
     successMessage: null,
   },
   match: {
@@ -132,10 +190,7 @@ const state = {
   },
 };
 
-/* ── AUTH ──
-   Token lives in localStorage for prototype convenience.
-   Known limitation: XSS can steal a localStorage JWT; prefer httpOnly cookies in production.
-*/
+/* ── AUTH ── */
 const auth = {
   token: null,
   user: null,
@@ -254,7 +309,6 @@ function showView(name) {
   renderNav();
 
   if (PROTECTED_VIEWS.includes(name) && !auth.token) {
-    renderLogin();
     name = 'login';
   }
 
@@ -299,7 +353,7 @@ function descriptionValidationError(text) {
   }
   const tokens = cleaned.toLowerCase().match(/[a-z0-9]+/g) || [];
   if (cleaned.length < 8 || tokens.length < 2) {
-    return 'Description is too short. Add a couple of details (e.g. “black Casio calculator with cracked case”).';
+    return 'Description is too short. Add a couple of details (color, brand, or marks).';
   }
   const meaningful = tokens.filter(t => !VAGUE_DESC_WORDS.has(t));
   if (!meaningful.length || tokens.every(t => VAGUE_DESC_WORDS.has(t))) {
@@ -366,6 +420,7 @@ function bindCategoryPills(container) {
     btn.addEventListener('click', () => {
       const name = btn.dataset.cat;
       state[currentFlow].category = name;
+      applyHighValueHintFromCategory(currentFlow, name);
       container.querySelectorAll('.category-pill').forEach(p => {
         const isSel = p.dataset.cat === name;
         p.classList.toggle('selected', isSel);
@@ -418,7 +473,7 @@ function buildLostHTML(s) {
           </svg>
         </div>
         <div class="upload-label">Upload a photo of your item</div>
-        <div class="upload-sub">optional but improves match accuracy</div>
+        <div class="upload-sub">Optional, but a photo helps matching</div>
       </div>
       ${s.imagePreview
         ? `<div class="preview-card">
@@ -443,15 +498,15 @@ function buildLostHTML(s) {
         ${s.predictionLoading
           ? `<div class="category-loading">
                <div class="spinner"></div>
-               <div class="category-loading-text">Analysing your item…</div>
+               <div class="category-loading-text">Identifying the item…</div>
              </div>`
           : `<div class="category-card">
-               <div class="category-card-title">🧠 AI predicted category</div>
+               <div class="category-card-title">Suggested category</div>
                <div class="category-pills">${categoryPillsHTML(s.category, s.predictionScores)}</div>
-               <div class="category-hint">Tap to change if this looks wrong</div>
+               <div class="category-hint">Tap another category if this is wrong</div>
              </div>
              <button class="btn-primary" id="btn-category-continue" ${s.category ? '' : 'disabled'}>
-               Looks right, continue →
+               Continue →
              </button>`
         }
       </div>`;
@@ -473,11 +528,27 @@ function buildLostHTML(s) {
         <div class="form-section-label">Tell us more</div>
         <div class="field">
           <label for="lost-desc">Description</label>
-          <textarea id="lost-desc" placeholder="e.g. Black backpack with red zipper…">${s.description}</textarea>
+          <textarea id="lost-desc" placeholder="Black backpack with a red zipper…">${s.description}</textarea>
+        </div>
+        <div class="field">
+          <label><input type="checkbox" id="lost-high-value" ${s.isHighValue ? 'checked' : ''}/> High-value item (phone, gadget, wallet…)</label>
+          <p class="bottom-note" style="margin:6px 0 0">${categoryUsuallyHasSerial(s.category)
+            ? 'Checked because this category often has a serial or IMEI. Uncheck if yours does not.'
+            : 'Check this if the item has a serial or IMEI so staff can verify it at the desk.'}</p>
+        </div>
+        <div class="row-2">
+          <div class="field">
+            <label for="lost-serial">Serial / IMEI ${s.isHighValue ? '(recommended)' : '(optional)'}</label>
+            <input type="text" id="lost-serial" placeholder="Shown only to desk staff" value="${escapeHTML(s.serialNumber || '')}"/>
+          </div>
+          <div class="field">
+            <label for="lost-marks">Distinctive marks ${s.isHighValue ? '(recommended if no serial)' : '(optional)'}</label>
+            <input type="text" id="lost-marks" placeholder="Cracked corner, sticker, engraving…" value="${escapeHTML(s.distinctiveMarks || '')}"/>
+          </div>
         </div>
         <div class="field">
           <label>Places you visited that day</label>
-          <p class="bottom-note" style="margin:0 0 10px">Select every spot you went — matching prefers found items from these places (soft boost, not a hard filter).</p>
+          <p class="bottom-note" style="margin:0 0 10px">Select every place you went. Matches from those spots are ranked higher.</p>
           ${locationCheckboxesHTML(s.location, 'lost-loc')}
         </div>
         <div class="row-2">
@@ -487,7 +558,7 @@ function buildLostHTML(s) {
           </div>
           <div class="field">
             <label for="lost-email">Your email</label>
-            <input type="email" id="lost-email" placeholder="you@university.edu" value="${s.email}" required/>
+            <input type="email" id="lost-email" placeholder="you@ama.edu.ph" value="${s.email}" required/>
           </div>
         </div>
       </div>
@@ -506,6 +577,8 @@ function buildLostHTML(s) {
         ${s.imagePreview ? `<div class="review-thumb"><img src="${s.imagePreview}" alt="Your item"/></div>` : ''}
         <div class="review-body">
           <div class="review-row"><div class="review-key">Category</div><div class="review-val">${getCategoryEmoji(s.category)} ${s.category}</div></div>
+          <div class="review-row"><div class="review-key">High-value</div><div class="review-val">${s.isHighValue ? 'Yes — serial or marks for desk check' : 'No'}</div></div>
+          ${s.serialNumber ? `<div class="review-row"><div class="review-key">Serial / IMEI</div><div class="review-val">On file (hidden from other users)</div></div>` : ''}
           <div class="review-row"><div class="review-key">Description</div><div class="review-val">${s.description || '—'}</div></div>
           <div class="review-row"><div class="review-key">Places visited</div><div class="review-val">${formatLocationsLabel(s.location)}</div></div>
           <div class="review-row"><div class="review-key">Date lost</div><div class="review-val">${s.dateLost || '—'}</div></div>
@@ -547,6 +620,7 @@ function bindLostEvents(s) {
 
   el.querySelector('#btn-category-continue')?.addEventListener('click', () => {
     if (!state.lost.category) return;
+    applyHighValueHintFromCategory('lost', state.lost.category);
     state.lost.step = 'details';
     renderLostStep();
   });
@@ -556,6 +630,9 @@ function bindLostEvents(s) {
     state.lost.location    = readCheckedLocations('lost-loc');
     state.lost.dateLost    = document.getElementById('lost-date').value.trim();
     state.lost.email       = document.getElementById('lost-email').value.trim().toLowerCase();
+    state.lost.isHighValue = !!document.getElementById('lost-high-value')?.checked;
+    state.lost.serialNumber = (document.getElementById('lost-serial')?.value || '').trim();
+    state.lost.distinctiveMarks = (document.getElementById('lost-marks')?.value || '').trim();
     const descErr = descriptionValidationError(state.lost.description);
     if (descErr) { alert(descErr); return; }
     if (!state.lost.location.length) {
@@ -623,7 +700,7 @@ function buildFoundHTML(s) {
           </svg>
         </div>
         <div class="upload-label">Upload a photo of the found item</div>
-        <div class="upload-sub">required — photo powers the AI matching</div>
+        <div class="upload-sub">Required — used to match the item</div>
       </div>
       ${s.imagePreview
         ? `<div class="preview-card">
@@ -646,15 +723,15 @@ function buildFoundHTML(s) {
       ${s.predictionLoading
         ? `<div class="category-loading">
              <div class="spinner"></div>
-             <div class="category-loading-text">Analysing your item…</div>
+             <div class="category-loading-text">Identifying the item…</div>
            </div>`
         : `<div class="category-card">
-             <div class="category-card-title">🧠 AI predicted category</div>
+             <div class="category-card-title">Suggested category</div>
              <div class="category-pills">${categoryPillsHTML(s.category, s.predictionScores)}</div>
-             <div class="category-hint">Tap to change if this looks wrong</div>
+             <div class="category-hint">Tap another category if this is wrong</div>
            </div>
            <button class="btn-primary" id="btn-category-continue" ${s.category ? '' : 'disabled'}>
-             Looks right, continue →
+             Continue →
            </button>`
       }`;
   }
@@ -674,14 +751,30 @@ function buildFoundHTML(s) {
         <div class="form-section-label">Item details</div>
         <div class="field">
           <label for="found-desc">Description</label>
-          <textarea id="found-desc" placeholder="e.g. Black iPhone 13 with cracked screen protector…">${s.description}</textarea>
-          <p class="bottom-note" style="margin-top:6px">Required — color, brand, marks, or other details (anti-fraud matching).</p>
+          <textarea id="found-desc" placeholder="Black iPhone with a cracked screen protector…">${s.description}</textarea>
+          <p class="bottom-note" style="margin-top:6px">Include color, brand, and any marks so the owner can recognize it.</p>
+        </div>
+        <div class="field">
+          <label><input type="checkbox" id="found-high-value" ${s.isHighValue ? 'checked' : ''}/> High-value item (phone, gadget, wallet…)</label>
+          <p class="bottom-note" style="margin:6px 0 0">${categoryUsuallyHasSerial(s.category)
+            ? 'Checked because this category often has a serial. Staff use it at the desk — matching still uses the photo and description.'
+            : 'Check this if the item has a serial or IMEI.'}</p>
+        </div>
+        <div class="row-2">
+          <div class="field">
+            <label for="found-serial">Serial / IMEI ${s.isHighValue ? '(recommended)' : '(optional)'}</label>
+            <input type="text" id="found-serial" placeholder="Shown only to desk staff" value="${escapeHTML(s.serialNumber || '')}"/>
+          </div>
+          <div class="field">
+            <label for="found-marks">Distinctive marks ${s.isHighValue ? '(recommended if no serial)' : '(optional)'}</label>
+            <input type="text" id="found-marks" placeholder="Cracked corner, sticker, engraving…" value="${escapeHTML(s.distinctiveMarks || '')}"/>
+          </div>
         </div>
         <div class="row-2">
           <div class="field">
             <label for="found-location">Where found</label>
             ${locationSelectHTML(s.location, 'found-location')}
-            <p class="bottom-note" style="margin-top:6px">Discovery spot — where you picked it up, not a holding desk.</p>
+            <p class="bottom-note" style="margin-top:6px">Where you picked it up — not the lost-and-found desk.</p>
           </div>
           <div class="field">
             <label for="found-date">Date found</label>
@@ -693,20 +786,20 @@ function buildFoundHTML(s) {
         <div class="form-section-label">Your contact</div>
         <div class="field">
           <label for="found-email">Your email</label>
-          <input type="email" id="found-email" placeholder="finder@university.edu" value="${s.email}" required/>
+          <input type="email" id="found-email" placeholder="you@ama.edu.ph" value="${s.email}" required/>
         </div>
       </div>
       <button class="btn-primary" id="found-submit-btn">Submit found item →</button>
       <div class="error-banner" id="found-error">Something went wrong. Please try again.</div>
-      <p class="bottom-note">Your photo is processed locally. We never share your contact without consent.</p>`;
+      <p class="bottom-note">Photos are used only for matching and desk verification. Contact details are shared after a match is accepted.</p>`;
   }
 
   if (s.step === 'success') {
     return `
       <div class="success-state">
         <div class="success-check">✓</div>
-        <div class="success-title">Your report is live.</div>
-        <div class="success-sub">${s.successMessage || "No open lost reports matched yet. Your found item is live for owners to discover."}</div>
+        <div class="success-title">Found item reported.</div>
+        <div class="success-sub">${s.successMessage || "No matching lost reports yet. Your found item is now listed for owners to find."}</div>
         <button class="btn-primary" id="found-report-another">Report another item</button>
       </div>`;
   }
@@ -734,6 +827,7 @@ function bindFoundEvents(s) {
 
   el.querySelector('#btn-category-continue')?.addEventListener('click', () => {
     if (!state.found.category) return;
+    applyHighValueHintFromCategory('found', state.found.category);
     state.found.step = 'details';
     renderFoundStep();
   });
@@ -765,11 +859,17 @@ async function predictCategory(flow) {
   try {
     const fd = new FormData();
     fd.append('image', s.imageFile);
-    const res  = await fetch(`${API_BASE}/predict-category`, { method: 'POST', body: fd });
+    const res  = await fetch(`${API_BASE}/predict-category`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: fd,
+    });
+    if (res.status === 401) { showView('login'); return; }
     if (!res.ok) throw new Error('Prediction failed');
     const data = await res.json();
     s.category        = data.predicted;
     s.predictionScores = data.all_scores;
+    applyHighValueHintFromCategory(flow, s.category);
   } catch {
     s.category        = s.category || 'Other';
     s.predictionScores = null;
@@ -816,6 +916,9 @@ async function submitLostReport(expandAll = false, searchAllLocations = false) {
   fd.append('location', locations.join(' | '));
   if (s.dateLost) fd.append('date_lost', s.dateLost);
   fd.append('email', s.email);
+  fd.append('is_high_value', s.isHighValue ? 'true' : 'false');
+  if (s.serialNumber) fd.append('serial_number', s.serialNumber);
+  if (s.distinctiveMarks) fd.append('distinctive_marks', s.distinctiveMarks);
   if (applyAllLocations) fd.append('search_all_locations', 'true');
 
   try {
@@ -824,6 +927,7 @@ async function submitLostReport(expandAll = false, searchAllLocations = false) {
       headers: authHeaders(),
       body: fd,
     });
+    if (res.status === 401) { showView('login'); return; }
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(typeof err.detail === 'string' ? err.detail : 'Submit failed');
@@ -859,6 +963,9 @@ async function submitFoundReport() {
   s.location    = (document.getElementById('found-location')?.value || '').trim();
   s.dateFound   = (document.getElementById('found-date')?.value || '').trim();
   s.email       = (document.getElementById('found-email')?.value || '').trim().toLowerCase();
+  s.isHighValue = !!document.getElementById('found-high-value')?.checked;
+  s.serialNumber = (document.getElementById('found-serial')?.value || '').trim();
+  s.distinctiveMarks = (document.getElementById('found-marks')?.value || '').trim();
 
   const btn   = document.getElementById('found-submit-btn');
   const errEl = document.getElementById('found-error');
@@ -908,6 +1015,9 @@ async function submitFoundReport() {
   fd.append('location', s.location);
   fd.append('date_found', s.dateFound);
   fd.append('finder_email', s.email);
+  fd.append('is_high_value', s.isHighValue ? 'true' : 'false');
+  if (s.serialNumber) fd.append('serial_number', s.serialNumber);
+  if (s.distinctiveMarks) fd.append('distinctive_marks', s.distinctiveMarks);
 
   try {
     const res = await fetch(`${API_BASE}/found`, {
@@ -915,6 +1025,7 @@ async function submitFoundReport() {
       headers: authHeaders(),
       body: fd,
     });
+    if (res.status === 401) { showView('login'); return; }
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       const detail = err.detail;
@@ -1014,7 +1125,7 @@ function renderMatchView() {
   const pct          = Math.round(selected.score * 100);
   const fillColor    = conf ? conf.color : 'emerald';
   const rankLabel    = selected.rank || (safeIndex + 1);
-  const imgSrc       = selected.image_url ? `${API_BASE}${selected.image_url}` : null;
+  const imgSrc       = mediaUrl(selected.image_url);
   const mineCategory = isReverse ? (foundForm?.category || response.category) : (lostForm?.category || response.lost_category);
   const sameCategory = typeof selected.same_category === 'boolean'
     ? selected.same_category
@@ -1025,8 +1136,8 @@ function renderMatchView() {
     : `${matches.length} ranked matches found`;
 
   const leftPreview = isReverse
-    ? (foundForm?.imagePreview || (response.found_image_url ? `${API_BASE}${response.found_image_url}` : null))
-    : (lostForm?.imagePreview || (response.lost_image_url ? `${API_BASE}${response.lost_image_url}` : null));
+    ? (foundForm?.imagePreview || mediaUrl(response.found_image_url))
+    : (lostForm?.imagePreview || mediaUrl(response.lost_image_url));
   const leftCategory = isReverse
     ? (response.category || foundForm?.category || '—')
     : (response.lost_category || lostForm?.category || '—');
@@ -1042,7 +1153,7 @@ function renderMatchView() {
 
   const sameLocation = !!selected.same_location;
   const locationScope = response.location_scope
-    || (state.match.searchAllLocations ? 'All locations (no location boost)' : null);
+    || (state.match.searchAllLocations ? 'All campus locations' : null);
   const rightDate = isReverse ? (selected.date_lost || '—') : (selected.date_found || '—');
   const primaryBtn = claimMessage
     ? (isReverse ? 'Match accepted' : 'Claim submitted')
@@ -1056,8 +1167,8 @@ function renderMatchView() {
     ? 'Compare your found item with this open lost report'
     : 'Compare your lost item with this match';
   const scopeLine = isReverse
-    ? `${matches.length} above threshold · Compared ${total} open lost reports`
-    : `${matches.length} above threshold · Compared ${total} found items · Scope: ${category}${locationScope ? ` · ${locationScope}` : ''}`;
+    ? `${matches.length} possible match${matches.length === 1 ? '' : 'es'} · Compared ${total} open lost reports`
+    : `${matches.length} possible match${matches.length === 1 ? '' : 'es'} · Compared ${total} found items · ${category}${locationScope ? ` · ${locationScope}` : ''}`;
 
   container.innerHTML = `
     <button class="back-link" id="match-back-landing">← Back</button>
@@ -1068,7 +1179,7 @@ function renderMatchView() {
         <div class="claim-success-sub">${claimMessage}</div>
         <div class="claim-success-actions">
           <button type="button" class="btn-emerald" id="btn-open-contact" style="width:auto;padding:10px 16px;font-size:13px">
-            View exchange / confirm →
+            View contacts / confirm →
           </button>
         </div>
       </div>
@@ -1152,13 +1263,12 @@ function renderMatchView() {
         <div class="detail-row"><div class="detail-key">${isReverse ? 'Lost at' : 'Found at'}</div><div class="detail-val emerald">${selected.location || '—'}</div></div>
         <div class="detail-row"><div class="detail-key">${isReverse ? 'Date lost' : 'Date found'}</div><div class="detail-val">${rightDate}</div></div>
         ${!isReverse ? `<div class="detail-row"><div class="detail-key">Time found</div><div class="detail-val">${selected.time_found || '—'}</div></div>` : ''}
-        <div class="detail-row"><div class="detail-key">Meetup</div><div class="detail-val">Coordinate directly (public campus spot)</div></div>
       </div>
       <div class="similarity-section">
-        <div class="similarity-title">Similarity breakdown</div>
-        ${scoreRowHTML('Text → image',              breakdown.text_to_image,             'indigo')}
-        ${scoreRowHTML('Image → image',             breakdown.image_to_image,            'emerald')}
-        ${scoreRowHTML('Found text → lost image',   breakdown.found_text_to_lost_image,  'amber')}
+        <div class="similarity-title">How similar is this?</div>
+        ${scoreRowHTML('Description vs photo', breakdown.text_to_image, 'indigo')}
+        ${scoreRowHTML('Photo vs photo', breakdown.image_to_image, 'emerald')}
+        ${scoreRowHTML('Finder notes vs photo', breakdown.found_text_to_lost_image, 'amber')}
       </div>
       <div class="category-match-row">
         <div class="category-match-label">Category match</div>
@@ -1172,9 +1282,16 @@ function renderMatchView() {
           ${sameLocation ? '✓ Found spot in your places' : '○ Different / unknown place'}
         </span>
       </div>
+      <div class="category-match-row">
+        <div class="category-match-label">Serial check</div>
+        <span class="cat-match-pill ${serialStatusClass(selected.serial_status)}">
+          ${serialStatusLabel(selected.serial_status)}
+        </span>
+      </div>
+      <p class="bottom-note" style="margin-top:8px">Serial comparison helps staff at the desk. Matching still uses the photo and description; staff confirm before release.</p>
       ${!isReverse && !state.match.searchAllLocations ? `
         <button type="button" class="btn-text" id="btn-expand-locations" style="margin-top:12px">
-          Search all locations (ignore place boost) →
+          Search all campus locations →
         </button>
       ` : ''}
     </div>
@@ -1182,7 +1299,7 @@ function renderMatchView() {
     <div class="action-btns">
       <button class="btn-emerald" id="btn-this-is-mine" ${claimMessage ? 'disabled' : ''}>${primaryBtn}</button>
       <button class="btn-secondary" id="btn-not-mine" ${claimMessage ? 'disabled' : ''}>${secondaryBtn}</button>
-      ${!isReverse ? '' : '<p class="bottom-note">Accepting notifies the lost owner with your contact. No email is sent until you accept.</p>'}
+      ${!isReverse ? '' : '<p class="bottom-note">Accepting notifies the owner and shares contact details. Complete the handover at the campus desk.</p>'}
       <div class="error-banner" id="claim-error">Something went wrong. Please try again.</div>
     </div>
 
@@ -1191,7 +1308,7 @@ function renderMatchView() {
       const mPct  = Math.round(m.score * 100);
       const mTier = tierLabel(m);
       const mRank = m.rank || (idx + 1);
-      const mImg  = m.image_url ? `${API_BASE}${m.image_url}` : null;
+      const mImg  = mediaUrl(m.image_url);
       const active = idx === safeIndex ? 'selected' : '';
       return `<div class="candidate-card ${active}" data-idx="${idx}" role="button" tabindex="0">
         <div class="candidate-rank">#${mRank}</div>
@@ -1209,7 +1326,7 @@ function renderMatchView() {
     }).join('')}
 
     <div class="match-footer-note">
-      Showing all ${matches.length} matches above the 0.55 threshold · ${total} reports compared · Ranked by weighted CLIP similarity
+      Showing ${matches.length} possible match${matches.length === 1 ? '' : 'es'} · ${total} reports compared
     </div>`;
 
   bindMatchEvents(selected, matches);
@@ -1228,46 +1345,64 @@ function buildEmptyMatchHTML(category, total) {
         <div class="radar-center"></div>
       </div>
       <div class="empty-title">No matches found in ${category}</div>
-      <div class="empty-sub">We searched ${total} found items. We'll notify you by email when something comes in.</div>
+      <div class="empty-sub">We searched ${total} found items. If a matching item is reported later, we'll email you once.</div>
       <div style="display:flex;flex-direction:column;gap:8px;align-items:center;margin-top:8px">
         ${!state.match.expandAll
           ? `<button class="btn-text" id="btn-expand-search">Expand search to all categories</button>`
           : ''
         }
         ${!state.match.searchAllLocations
-          ? `<button class="btn-text" id="btn-expand-locations">Search all locations (ignore place boost)</button>`
+          ? `<button class="btn-text" id="btn-expand-locations">Search all campus locations</button>`
           : ''
         }
       </div>
     </div>
     <div class="match-footer-note">
-      Searched ${total} reports · Scope: ${category}${locScope ? ` · ${locScope}` : ''} · Ranked by weighted CLIP similarity
+      Searched ${total} reports · ${category}${locScope ? ` · ${locScope}` : ''}
     </div>`;
 }
 
 function buildClaimEmailTemplate(contact) {
   const category = contact.category || 'item';
-  const pickup = contact.pickup_point
-    || 'Agree a public campus meetup — coordinate directly';
-  const foundLoc = contact.found_location || 'n/a';
-  const lostLoc = contact.lost_location || 'n/a';
+  const foundLoc = contact.found_location || '—';
+  const lostLoc = contact.lost_location || '—';
   const owner = contact.owner_email || accountEmail() || 'me';
   return {
     subject: `AMAlost match accepted — contact for ${category}`,
     body: [
-      `Match accepted. Status: IN PROCESS.`,
+      `Match accepted. Status: In process.`,
       '',
-      `Finder: ${contact.finder_name || 'Anonymous'} <${contact.finder_email}>`,
+      `Finder: ${contact.finder_name || 'Finder'} <${contact.finder_email}>`,
       `Owner: ${owner}`,
-      `Found at (discovery): ${foundLoc}`,
+      `Found at: ${foundLoc}`,
       `Lost places visited: ${lostLoc}`,
-      `Meetup: ${pickup}`,
       '',
-      'Coordinate pickup with each other — AMAlost does not hold items.',
-      'Both parties must confirm after a successful exchange.',
-      'Anti-fraud: public meetup, verify identity, never send money.',
+      'Bring the item to the campus lost-and-found desk. Staff hold it until the owner is verified — do not arrange private meetups.',
+      'After desk release, both parties can confirm the exchange in the app.',
+      'Verify serial numbers or distinctive marks when available. Never send money.',
     ].join('\n'),
   };
+}
+
+function mailtoLink(email, label = null) {
+  if (!email) return escapeHTML(label || '—');
+  const safe = escapeHTML(email);
+  return `<a href="mailto:${safe}" style="color:inherit;font-weight:600">${label ? escapeHTML(label) : safe}</a>`;
+}
+
+function directContactBlock(ownerEmail, finderEmail, { highlight = false } = {}) {
+  const note = highlight
+    ? 'Email may not have arrived — use the addresses below to coordinate the desk handover.'
+    : 'Both emails are shared here after a match is accepted so you can coordinate the desk handover.';
+  return `
+    <div class="contact-detail" style="${highlight ? 'border-color:#F59E0B;background:rgba(245,158,11,0.08)' : ''}">
+      <div class="contact-detail-label">Direct contact</div>
+      <div class="contact-detail-value" style="line-height:1.55">
+        Owner: ${mailtoLink(ownerEmail)}<br/>
+        Finder: ${mailtoLink(finderEmail)}
+      </div>
+      <div class="contact-modal-sub" style="margin:8px 0 0">${note}</div>
+    </div>`;
 }
 
 function openFinderContactModal(contactOverride = null) {
@@ -1275,13 +1410,13 @@ function openFinderContactModal(contactOverride = null) {
   const root = document.getElementById('contact-modal-root');
   if (!root) return;
 
-  if (!contact || !contact.finder_email) {
+  if (!contact || (!contact.finder_email && !contact.owner_email)) {
     root.classList.remove('hidden');
     root.innerHTML = `
       <div class="contact-modal-backdrop" id="contact-modal-backdrop">
         <div class="contact-modal" role="dialog" aria-modal="true" aria-labelledby="contact-modal-title">
-          <div class="contact-modal-title" id="contact-modal-title">Finder contact unavailable</div>
-          <div class="contact-modal-sub">This found item has no email on file. Coordinate a public campus meetup if you still pursue the claim.</div>
+          <div class="contact-modal-title" id="contact-modal-title">Contact unavailable</div>
+          <div class="contact-modal-sub">This exchange has no email on file. Visit the campus lost-and-found desk for help.</div>
           <div class="contact-modal-actions">
             <button type="button" class="btn-secondary" id="btn-close-contact-modal">Close</button>
           </div>
@@ -1298,9 +1433,10 @@ function openFinderContactModal(contactOverride = null) {
   const viaSmtp = contact.mail_mode === 'smtp';
   const ownerOk = !!contact.owner_mail_sent;
   const finderOk = !!contact.finder_mail_sent;
-  const statusLine = viaSmtp
-    ? 'Match accepted emails were sent automatically. Status is now in process.'
-    : 'Match accepted emails were saved to the server outbox (add SMTP for live inbox delivery). Status is now in process.';
+  const deliveryFailed = !viaSmtp || !ownerOk || !finderOk;
+  const statusLine = !deliveryFailed
+    ? 'Match accepted emails were sent. Status is now in process.'
+    : 'Notification email may have failed — use Direct contact below. The exchange is still in process.';
 
   root.classList.remove('hidden');
   root.innerHTML = `
@@ -1311,29 +1447,26 @@ function openFinderContactModal(contactOverride = null) {
 
         <div class="contact-detail">
           <div class="contact-detail-label">Exchange status</div>
-          <div class="contact-detail-value">in_process · waiting for both confirmations</div>
+          <div class="contact-detail-value">In process — bring the item to the campus lost-and-found desk</div>
+        </div>
+        ${directContactBlock(
+          contact.owner_email || accountEmail(),
+          contact.finder_email,
+          { highlight: deliveryFailed },
+        )}
+        <div class="contact-detail">
+          <div class="contact-detail-label">Found location</div>
+          <div class="contact-detail-value">${escapeHTML(contact.found_location || '—')}</div>
         </div>
         <div class="contact-detail">
-          <div class="contact-detail-label">Finder</div>
-          <div class="contact-detail-value">${contact.finder_name || 'Anonymous'} · ${contact.finder_email}</div>
-        </div>
-        <div class="contact-detail">
-          <div class="contact-detail-label">Owner (you)</div>
-          <div class="contact-detail-value">${contact.owner_email || accountEmail() || '—'}</div>
-        </div>
-        <div class="contact-detail">
-          <div class="contact-detail-label">Pickup point</div>
-          <div class="contact-detail-value">${contact.pickup_point || 'Coordinate a public campus meetup'}</div>
-        </div>
-        <div class="contact-detail">
-          <div class="contact-detail-label">Email delivery</div>
-          <div class="contact-detail-value">${viaSmtp ? 'SMTP' : 'Outbox'} · owner ${ownerOk ? 'sent' : 'failed'} · finder ${finderOk ? 'sent' : 'failed'}</div>
+          <div class="contact-detail-label">Lost location</div>
+          <div class="contact-detail-value">${escapeHTML(contact.lost_location || '—')}</div>
         </div>
 
         <div class="contact-detail-label" style="margin-top:12px">What was emailed</div>
-        <div class="contact-template-preview"><strong>Subject:</strong> ${template.subject}\n\n${template.body}</div>
+        <div class="contact-template-preview"><strong>Subject:</strong> ${escapeHTML(template.subject)}\n\n${escapeHTML(template.body)}</div>
         <div class="contact-modal-sub" style="margin-top:8px">
-          Safety tip: meet in public, verify the rightful owner, and never send money. AMAlost does not hold items.
+          Safety tip: complete the return at the campus lost-and-found desk. Verify the owner with serial or marks when available, and never send money.
         </div>
         <div id="contact-send-status" class="contact-modal-sub" style="margin:0 0 10px"></div>
 
@@ -1523,8 +1656,8 @@ function showExchangeConfirmResult(data) {
     ? '<span class="pill pill-found">Processed</span>'
     : '<span class="pill pill-category">In process</span>';
   const subtitle = processed
-    ? 'Both parties confirmed. This item is marked processed and will no longer appear in open lost/found matching.'
-    : (data.message || 'Thanks — we recorded your confirmation. Waiting for the other party.');
+    ? 'Staff released the item at the desk. This case is marked processed and will no longer appear in open matching.'
+    : (data.message || 'Thanks — we recorded your confirmation. Staff desk receive/release still required to close the case.');
 
   root.classList.remove('hidden');
   root.innerHTML = `
@@ -1609,7 +1742,7 @@ async function resendCoordinationEmails(contact) {
     if (statusEl) {
       statusEl.textContent = data.mail_mode === 'smtp'
         ? 'Notification emails resent.'
-        : 'Saved to server outbox — configure SMTP_HOST for live delivery.';
+        : 'Resend failed — check SMTP settings on the server.';
     }
     openFinderContactModal(state.match.contact);
   } catch (err) {
@@ -1724,7 +1857,6 @@ async function claimCurrentMatch(selectedMatch) {
       category: data.category || selectedMatch.category || null,
       found_location: data.found_location || null,
       lost_location: data.lost_location || null,
-      pickup_point: data.pickup_point || 'Coordinate a public campus meetup',
       mail_mode: data.mail_mode || 'outbox',
       owner_mail_sent: !!data.owner_mail_sent,
       finder_mail_sent: !!data.finder_mail_sent,
@@ -1797,6 +1929,14 @@ function filterAdminTab(data, tabId) {
   const found = data.found_items || [];
   const claims = data.claims || [];
 
+  const claimByLost = {};
+  const claimByFound = {};
+  for (const c of claims) {
+    if (c.status !== 'in_process' && c.status !== 'at_desk' && c.status !== 'processed') continue;
+    if (c.lost_item_id) claimByLost[c.lost_item_id] = c;
+    if (c.found_item_id) claimByFound[c.found_item_id] = c;
+  }
+
   if (tabId === 'lost') {
     return lost
       .filter(item => item.status === 'open' || item.status === 'available')
@@ -1809,15 +1949,31 @@ function filterAdminTab(data, tabId) {
   }
   if (tabId === 'in_process') {
     return [
-      ...lost.filter(item => item.status === 'in_process').map(item => ({ kind: 'lost', ...item })),
-      ...found.filter(item => item.status === 'in_process').map(item => ({ kind: 'found', ...item })),
-      ...claims.filter(c => c.status === 'in_process').map(c => ({ kind: 'claim', ...c })),
+      ...lost.filter(item => item.status === 'in_process' || item.status === 'at_desk').map(item => ({
+        kind: 'lost',
+        ...item,
+        _paired_claim: claimByLost[item.id] || null,
+      })),
+      ...found.filter(item => item.status === 'in_process' || item.status === 'at_desk').map(item => ({
+        kind: 'found',
+        ...item,
+        _paired_claim: claimByFound[item.id] || null,
+      })),
+      ...claims.filter(c => c.status === 'in_process' || c.status === 'at_desk').map(c => ({ kind: 'claim', ...c })),
     ];
   }
   // matched / completed
   return [
-    ...lost.filter(item => item.status === 'processed').map(item => ({ kind: 'lost', ...item })),
-    ...found.filter(item => item.status === 'processed').map(item => ({ kind: 'found', ...item })),
+    ...lost.filter(item => item.status === 'processed').map(item => ({
+      kind: 'lost',
+      ...item,
+      _paired_claim: claimByLost[item.id] || null,
+    })),
+    ...found.filter(item => item.status === 'processed').map(item => ({
+      kind: 'found',
+      ...item,
+      _paired_claim: claimByFound[item.id] || null,
+    })),
     ...claims.filter(c => c.status === 'processed').map(c => ({ kind: 'claim', ...c })),
   ];
 }
@@ -1827,9 +1983,23 @@ function adminTabCounts(data) {
 }
 
 function renderAdminItemCard(item) {
-  const canCancel = item.status === 'in_process';
+  const canCancel = item.status === 'in_process' || item.status === 'at_desk';
+  const canReceive = item.kind === 'claim' && item.status === 'in_process' && !item.desk_received;
+  const canRelease = item.kind === 'claim' && item.desk_received && item.status !== 'processed' && !item.desk_released;
+  const serialLine = item.serial_number
+    ? `<br/>Serial on file: ${escapeHTML(item.serial_number)}`
+    : (item.is_high_value ? '<br/>Serial: not provided' : '');
+  const marksLine = item.distinctive_marks
+    ? `<br/>Marks: ${escapeHTML(item.distinctive_marks)}`
+    : '';
   const actions = `
     <div class="dash-actions">
+      ${canReceive
+        ? `<button type="button" class="btn-emerald btn-admin-action" data-admin-desk="receive" data-id="${escapeHTML(item.id)}">Receive at desk</button>`
+        : ''}
+      ${canRelease
+        ? `<button type="button" class="btn-emerald btn-admin-action" data-admin-desk="release" data-id="${escapeHTML(item.id)}">Release to owner</button>`
+        : ''}
       ${canCancel
         ? `<button type="button" class="btn-secondary btn-admin-action" data-admin-cancel="${escapeHTML(item.kind)}" data-id="${escapeHTML(item.id)}">Cancel exchange</button>`
         : ''}
@@ -1837,39 +2007,60 @@ function renderAdminItemCard(item) {
     </div>`;
 
   if (item.kind === 'claim') {
+    const ownerEmail = item.owner_email || item.claimed_by_email || null;
+    const finderEmail = item.finder_email || null;
     return `
-      <div class="dash-card">
-        <div class="dash-thumb">🔗</div>
-        <div class="dash-body">
-          <div class="dash-card-title">Claim #${escapeHTML(item.id)}</div>
-          <div class="dash-card-desc">${escapeHTML(item.notify_message || 'No message')}</div>
-          <div class="dash-card-meta">${escapeHTML(item.claimed_by_email || '—')} · lost #${escapeHTML(item.lost_item_id || '—')} · found #${escapeHTML(item.found_item_id || '—')}</div>
+      <article class="admin-tile">
+        <div class="admin-tile-media">🔗</div>
+        <div class="admin-tile-body">
+          <div class="admin-tile-title">${getCategoryEmoji(item.category)} Claim · ${escapeHTML(item.category || item.id)}</div>
+          <div class="admin-tile-desc">${escapeHTML(item.notify_message || 'Exchange in process — bring the item to the campus desk')}</div>
+          <div class="admin-tile-meta">
+            <strong>Direct contact</strong><br/>
+            Owner: ${mailtoLink(ownerEmail)}<br/>
+            Finder: ${mailtoLink(finderEmail)}<br/>
+            lost #${escapeHTML(item.lost_item_id || '—')} · found #${escapeHTML(item.found_item_id || '—')}
+          </div>
           <div class="dash-pills">
             ${statusPill(item.status)}
             <span class="status-pill status-open">owner ${item.owner_confirmed ? '✓' : '…'}</span>
             <span class="status-pill status-open">finder ${item.finder_confirmed ? '✓' : '…'}</span>
+            <span class="status-pill status-open">desk ${item.desk_received ? 'received' : 'pending'}</span>
+            <span class="status-pill ${item.serial_status === 'match' ? 'status-matched' : item.serial_status === 'mismatch' ? 'status-claimed' : 'status-open'}">${serialStatusLabel(item.serial_status)}</span>
+          </div>
+          <div class="admin-tile-meta" style="margin-top:8px">
+            <strong>Desk serial check</strong><br/>
+            Owner serial: ${escapeHTML(item.lost_serial || '—')}<br/>
+            Finder serial: ${escapeHTML(item.found_serial || '—')}<br/>
+            Owner marks: ${escapeHTML(item.lost_marks || '—')}<br/>
+            Finder marks: ${escapeHTML(item.found_marks || '—')}
           </div>
           ${actions}
         </div>
-      </div>`;
+      </article>`;
   }
 
   const isLost = item.kind === 'lost';
   const dateLabel = isLost ? (item.date_lost || '—') : (item.date_found || '—');
   const who = isLost ? (item.email || '—') : (item.finder_email || item.reported_by || '—');
+  const paired = item._paired_claim || null;
+  const contactMeta = paired
+    ? `<br/><strong>Direct contact</strong> · Owner: ${mailtoLink(paired.owner_email || paired.claimed_by_email)} · Finder: ${mailtoLink(paired.finder_email)}`
+    : '';
+  const media = item.image_url
+    ? `<img src="${mediaUrl(item.image_url)}" alt=""/>`
+    : getCategoryEmoji(item.category);
   return `
-    <div class="dash-card">
-      <div class="dash-thumb">${item.image_url
-        ? `<img src="${API_BASE}${item.image_url}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:10px"/>`
-        : getCategoryEmoji(item.category)}</div>
-      <div class="dash-body">
-        <div class="dash-card-title">${getCategoryEmoji(item.category)} ${escapeHTML(item.category)} · ${isLost ? 'Lost' : 'Found'} #${escapeHTML(item.id)}</div>
-        <div class="dash-card-desc">${escapeHTML(item.description || 'No description')}</div>
-        <div class="dash-card-meta">${escapeHTML(item.location || 'Location n/a')} · ${escapeHTML(dateLabel)} · ${escapeHTML(who)}</div>
+    <article class="admin-tile">
+      <div class="admin-tile-media">${media}</div>
+      <div class="admin-tile-body">
+        <div class="admin-tile-title">${getCategoryEmoji(item.category)} ${escapeHTML(item.category)} · ${isLost ? 'Lost' : 'Found'}${item.is_high_value ? ' · high-value' : ''}</div>
+        <div class="admin-tile-desc">${escapeHTML(item.description || 'No description')}</div>
+        <div class="admin-tile-meta">${escapeHTML(item.location || 'Location not set')} · ${escapeHTML(dateLabel)}<br/>${escapeHTML(who)}${contactMeta}${serialLine}${marksLine}</div>
         <div class="dash-pills">${statusPill(item.status)}</div>
         ${actions}
       </div>
-    </div>`;
+    </article>`;
 }
 
 function renderAdminDashboard(data, tabId = adminActiveTab) {
@@ -1886,7 +2077,7 @@ function renderAdminDashboard(data, tabId = adminActiveTab) {
     <div class="flow-header">
       <div class="flow-eyebrow">Admin</div>
       <div class="flow-title">Campus <span>dashboard</span></div>
-      <p class="flow-subtitle">All uploaded items across campus — filter by status. Cancel reopens an exchange; Delete removes the entry.</p>
+      <p class="flow-subtitle">Campus reports by status. Cancel reopens an exchange. Delete removes the entry.</p>
     </div>
     <div class="admin-tabs" role="tablist">
       ${ADMIN_TABS.map(tab => `
@@ -1911,9 +2102,32 @@ function renderAdminDashboard(data, tabId = adminActiveTab) {
   container.querySelectorAll('[data-admin-cancel]').forEach(btn => {
     btn.addEventListener('click', () => adminCancelEntry(btn));
   });
+  container.querySelectorAll('[data-admin-desk]').forEach(btn => {
+    btn.addEventListener('click', () => adminDeskAction(btn));
+  });
   container.querySelectorAll('[data-admin-delete]').forEach(btn => {
     btn.addEventListener('click', () => adminDeleteEntry(btn));
   });
+}
+
+async function adminDeskAction(btn) {
+  const action = btn.getAttribute('data-admin-desk');
+  const claimId = btn.getAttribute('data-id');
+  if (!action || !claimId) return;
+  const path = action === 'release' ? '/admin/claim/desk-release' : '/admin/claim/desk-receive';
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ claim_id: claimId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Desk action failed');
+    window.alert(data.message || 'Desk status updated.');
+    openAdminQueue();
+  } catch (err) {
+    window.alert(err.message || 'Desk action failed.');
+  }
 }
 
 async function adminCancelEntry(btn) {
@@ -2005,7 +2219,7 @@ async function openAdminQueue() {
   } catch {
     container.innerHTML = `
       <button class="back-link" id="admin-back">← Landing</button>
-      <div class="error-banner visible">Could not load the admin queue. Is the API running?</div>`;
+      <div class="error-banner visible">Could not load the admin queue. Please try again.</div>`;
     document.getElementById('admin-back')?.addEventListener('click', () => showView('landing'));
   }
 }
@@ -2019,8 +2233,17 @@ function escapeHTML(str) {
 }
 
 function statusPill(status) {
-  const label = (status || 'unknown').replace(/_/g, ' ');
-  return `<span class="status-pill status-${status || 'unknown'}">${escapeHTML(label)}</span>`;
+  const map = {
+    open: 'status-open',
+    available: 'status-open',
+    in_process: 'status-claimed',
+    at_desk: 'status-claimed',
+    processed: 'status-matched',
+    cancelled: 'status-open',
+  };
+  const cls = map[status] || 'status-open';
+  const label = status === 'at_desk' ? 'at desk' : (status || 'unknown').replace(/_/g, ' ');
+  return `<span class="status-pill ${cls}">${escapeHTML(label)}</span>`;
 }
 
 async function openDashboard() {
@@ -2042,7 +2265,7 @@ async function openDashboard() {
   } catch {
     container.innerHTML = `
       <button class="back-link" id="dash-back">← Back</button>
-      <div class="error-banner visible">Could not load your items. Is the API running?</div>`;
+      <div class="error-banner visible">Could not load your items. Please try again.</div>`;
     document.getElementById('dash-back')?.addEventListener('click', () => showView('landing'));
   }
 }
@@ -2058,26 +2281,44 @@ function renderDashboard(data) {
   const lostCards = lost.length ? lost.map(item => `
     <div class="dash-card">
       <div class="dash-thumb">${item.image_url
-        ? `<img src="${API_BASE}${item.image_url}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:10px"/>`
+        ? `<img src="${mediaUrl(item.image_url)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:10px"/>`
         : getCategoryEmoji(item.category)}</div>
       <div class="dash-body">
         <div class="dash-card-title">${getCategoryEmoji(item.category)} ${escapeHTML(item.category)}</div>
         <div class="dash-card-desc">${escapeHTML(item.description || 'No description')}</div>
-        <div class="dash-card-meta">${escapeHTML(item.location || 'Location n/a')} · ${escapeHTML(item.date_lost || '—')}</div>
+        <div class="dash-card-meta">${escapeHTML(item.location || 'Location not set')} · ${escapeHTML(item.date_lost || '—')}</div>
         <div class="dash-pills">${statusPill(item.status)}</div>
+        ${item.status === 'open' ? `
+        <div class="dash-actions">
+          <button type="button" class="btn-secondary btn-admin-action" data-search-kind="lost" data-search-id="${escapeHTML(item.id)}">Search again</button>
+          <button type="button" class="btn-cancel" data-delete-kind="lost" data-delete-id="${escapeHTML(item.id)}">Delete report</button>
+        </div>` : item.status === 'in_process'
+          ? `<div class="dash-card-meta">Cancel the exchange first to search or delete this report.</div>`
+          : `<div class="dash-actions">
+          <button type="button" class="btn-cancel" data-delete-kind="lost" data-delete-id="${escapeHTML(item.id)}">Delete report</button>
+        </div>`}
       </div>
     </div>`).join('') : '<div class="admin-empty">You haven\'t reported any lost items yet.</div>';
 
   const foundCards = found.length ? found.map(item => `
     <div class="dash-card">
       <div class="dash-thumb">${item.image_url
-        ? `<img src="${API_BASE}${item.image_url}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:10px"/>`
+        ? `<img src="${mediaUrl(item.image_url)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:10px"/>`
         : getCategoryEmoji(item.category)}</div>
       <div class="dash-body">
         <div class="dash-card-title">${getCategoryEmoji(item.category)} ${escapeHTML(item.category)}</div>
         <div class="dash-card-desc">${escapeHTML(item.description || 'No description')}</div>
-        <div class="dash-card-meta">${escapeHTML(item.location || 'Location n/a')} · ${escapeHTML(item.date_found || '—')}</div>
+        <div class="dash-card-meta">${escapeHTML(item.location || 'Location not set')} · ${escapeHTML(item.date_found || '—')}</div>
         <div class="dash-pills">${statusPill(item.status)}</div>
+        ${item.status === 'available' ? `
+        <div class="dash-actions">
+          <button type="button" class="btn-secondary btn-admin-action" data-search-kind="found" data-search-id="${escapeHTML(item.id)}">Search again</button>
+          <button type="button" class="btn-cancel" data-delete-kind="found" data-delete-id="${escapeHTML(item.id)}">Delete report</button>
+        </div>` : item.status === 'in_process'
+          ? `<div class="dash-card-meta">Cancel the exchange first to search or delete this report.</div>`
+          : `<div class="dash-actions">
+          <button type="button" class="btn-cancel" data-delete-kind="found" data-delete-id="${escapeHTML(item.id)}">Delete report</button>
+        </div>`}
       </div>
     </div>`).join('') : '<div class="admin-empty">You haven\'t reported any found items yet.</div>';
 
@@ -2086,6 +2327,13 @@ function renderDashboard(data) {
       <span class="confirm-flag">Owner ${claim.owner_confirmed ? '<span class="yes">✓</span>' : '<span class="no">pending</span>'}</span>
       <span class="confirm-flag">Finder ${claim.finder_confirmed ? '<span class="yes">✓</span>' : '<span class="no">pending</span>'}</span>`;
     const youConfirmed = claim.role === 'owner' ? claim.owner_confirmed : claim.finder_confirmed;
+    const inProcess = claim.status === 'in_process';
+    const contactBlock = (claim.owner_email || claim.finder_email || claim.counterpart_email) ? `
+      <div class="dash-card-meta" style="margin-top:8px">
+        <strong>Direct contact</strong><br/>
+        Owner: ${mailtoLink(claim.owner_email)} · Finder: ${mailtoLink(claim.finder_email || claim.counterpart_email)}
+        ${inProcess ? '<br/><span style="opacity:.85">Use these if notification email did not arrive.</span>' : ''}
+      </div>` : '';
     const actions = claim.can_cancel ? `
       <div class="dash-actions">
         ${!youConfirmed ? `<button type="button" class="btn-confirm-exchange" data-claim-confirm="${claim.id}" data-role="${claim.role}">Confirm exchange done</button>` : ''}
@@ -2096,7 +2344,8 @@ function renderDashboard(data) {
       <div class="dash-thumb">${getCategoryEmoji(claim.category)}</div>
       <div class="dash-body">
         <div class="dash-card-title">${getCategoryEmoji(claim.category)} ${escapeHTML(claim.category || 'Item')}</div>
-        <div class="dash-card-meta">You are the <strong>${escapeHTML(claim.role)}</strong> · with ${escapeHTML(claim.counterpart_email || 'unknown')}</div>
+        <div class="dash-card-meta">You are the <strong>${escapeHTML(claim.role)}</strong></div>
+        ${contactBlock}
         <div class="dash-pills">${statusPill(claim.status)} ${confirmFlags}</div>
         ${actions}
       </div>
@@ -2108,7 +2357,7 @@ function renderDashboard(data) {
     <div class="flow-header">
       <div class="flow-eyebrow">Signed in as ${escapeHTML(data.email || '')}</div>
       <div class="flow-title">My <span>items</span></div>
-      <p class="flow-subtitle">Your reports and matches. You can cancel an in-process exchange to reopen both items.</p>
+      <p class="flow-subtitle">Your reports and matches. Use Search again on an open item to check for new matches. Cancel an in-process exchange to reopen both items.</p>
     </div>
 
     <div class="dash-section">
@@ -2131,6 +2380,85 @@ function renderDashboard(data) {
   container.querySelectorAll('[data-claim-confirm]').forEach(btn => {
     btn.addEventListener('click', () => confirmFromDashboard(btn.dataset.claimConfirm, btn));
   });
+  container.querySelectorAll('[data-search-id]').forEach(btn => {
+    btn.addEventListener('click', () => searchAgainFromDashboard(btn.dataset.searchKind, btn.dataset.searchId, btn));
+  });
+  container.querySelectorAll('[data-delete-id]').forEach(btn => {
+    btn.addEventListener('click', () => deleteOwnItem(btn.dataset.deleteKind, btn.dataset.deleteId, btn));
+  });
+}
+
+async function searchAgainFromDashboard(kind, itemId, btn) {
+  if (!kind || !itemId) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Searching…'; }
+  try {
+    const res = await fetch(`${API_BASE}/me/${encodeURIComponent(kind)}/${encodeURIComponent(itemId)}/search-again`, {
+      method: 'POST',
+      headers: authHeaders(),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 401) { showView('login'); return; }
+    if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Search failed');
+
+    if (kind === 'lost') {
+      state.match.response = data;
+      state.match.lostForm = {
+        category: data.lost_category || null,
+        description: data.lost_description || '',
+        location: data.lost_location || '',
+        dateLost: data.lost_date || '',
+        email: accountEmail(),
+        imagePreview: mediaUrl(data.lost_image_url),
+      };
+      state.match.lostItemId = data.id || itemId;
+      state.match.foundItemId = null;
+      state.match.foundForm = null;
+      state.match.direction = 'lost_to_found';
+    } else {
+      state.match.response = data;
+      state.match.foundForm = {
+        category: data.category || null,
+        description: data.found_description || '',
+        location: data.found_location || '',
+        dateFound: data.found_date || '',
+        email: accountEmail(),
+        imagePreview: mediaUrl(data.found_image_url),
+      };
+      state.match.foundItemId = data.id || itemId;
+      state.match.lostItemId = null;
+      state.match.lostForm = null;
+      state.match.direction = 'found_to_lost';
+    }
+    state.match.expandAll = false;
+    state.match.searchAllLocations = !!data.search_all_locations;
+    state.match.selectedIndex = 0;
+    state.match.claimMessage = null;
+    state.match.contact = null;
+    renderMatchView();
+    showView('match');
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Search again'; }
+    window.alert(err.message || 'Could not search again for this item.');
+  }
+}
+
+async function deleteOwnItem(kind, itemId, btn) {
+  if (!kind || !itemId) return;
+  if (!window.confirm(`Delete this ${kind} report permanently? This cannot be undone.`)) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Deleting…'; }
+  try {
+    const res = await fetch(`${API_BASE}/me/${encodeURIComponent(kind)}/${encodeURIComponent(itemId)}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 401) { showView('login'); return; }
+    if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Delete failed');
+    openDashboard();
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Delete report'; }
+    window.alert(err.message || 'Could not delete this report.');
+  }
 }
 
 async function cancelClaimFromDashboard(claimId, btn) {
@@ -2154,7 +2482,7 @@ async function cancelClaimFromDashboard(claimId, btn) {
 
 async function confirmFromDashboard(claimId, btn) {
   if (!claimId) return;
-  if (!window.confirm('Confirm that you completed this exchange? The item is marked processed once both parties confirm.')) return;
+  if (!window.confirm('Confirm that you completed this exchange? Staff desk release is still required before the case is fully processed.')) return;
   if (btn) { btn.disabled = true; btn.textContent = 'Confirming…'; }
   try {
     const res = await fetch(`${API_BASE}/claim/confirm-auth`, {
@@ -2246,7 +2574,7 @@ function buildLoginHTML() {
       <div class="flow-title" style="margin-bottom:18px">Sign in to AMAlost</div>
       <div class="field">
         <label for="login-email">Email</label>
-        <input type="email" id="login-email" placeholder="you@university.edu" autocomplete="email"/>
+        <input type="email" id="login-email" placeholder="you@ama.edu.ph" autocomplete="email"/>
       </div>
       <div class="field">
         <label for="login-password">Password</label>
@@ -2259,7 +2587,6 @@ function buildLoginHTML() {
       Too many attempts. Try again in ${remaining} seconds.
     </div>
     <div class="auth-switch">Don't have an account? <button type="button" id="btn-goto-register">Register</button></div>
-    <button type="button" class="auth-forgot" id="btn-forgot-password">Forgot password?</button>
   `;
 }
 
@@ -2277,7 +2604,6 @@ function bindLoginEvents() {
     if (auth.token) showView('landing');
   });
   el.querySelector('#btn-goto-register')?.addEventListener('click', () => showView('register'));
-  el.querySelector('#btn-forgot-password')?.addEventListener('click', () => {});
   el.querySelector('#btn-login-submit')?.addEventListener('click', () => submitLogin());
 
   el.querySelector('#login-password')?.addEventListener('keydown', e => {
@@ -2359,21 +2685,19 @@ async function submitLogin() {
 
 function buildRegisterHTML() {
   if (state.register.successEmail) {
-    const modeNote = state.register.mailMode === 'outbox'
-      ? 'Dev mode: email was written to the server outbox (SMTP not used).'
-      : state.register.mailSent
-        ? 'A verification email is on its way — check inbox and spam.'
-        : 'We tried to send a verification email. If it does not arrive, use the link below or resend.';
+    const modeNote = state.register.mailMode === 'smtp' && state.register.mailSent
+      ? 'A verification email is on its way — check inbox and spam.'
+      : 'If the email does not arrive, tap Resend verification email.';
     return `
       <div class="auth-logo" id="register-brand-logo">AMA<span>lost</span></div>
       <div class="success-state">
         <div class="success-check">✓</div>
         <div class="success-title">Check your email</div>
-        <div class="success-sub">We sent a verification link to <strong>${escapeHTML(state.register.successEmail)}</strong>. You must verify before signing in.</div>
+        <div class="success-sub">We sent a verification link to <strong>${escapeHTML(state.register.successEmail)}</strong>. Verify your email before signing in.</div>
         <p class="bottom-note" style="margin-bottom:16px">${modeNote}</p>
         <button type="button" class="btn-primary" id="btn-resend-verify" style="margin-bottom:12px">Resend verification email</button>
-        ${state.register.verifyUrl ? `
-          <p class="bottom-note" style="margin-bottom:12px">Demo fallback — open verify link directly:</p>
+        ${state.register.mailMode === 'outbox' && state.register.verifyUrl ? `
+          <p class="bottom-note" style="margin-bottom:12px">Email sending is unavailable. Use this link to verify:</p>
           <button type="button" class="btn-text" id="btn-open-verify" style="margin-bottom:16px">Verify email →</button>
         ` : ''}
         <button type="button" class="btn-text" id="btn-register-to-login">Back to sign in</button>
@@ -2389,11 +2713,11 @@ function buildRegisterHTML() {
       <div class="flow-title" style="margin-bottom:18px">Create your account</div>
       <div class="field">
         <label for="register-name">Full name</label>
-        <input type="text" id="register-name" placeholder="Juan Dela Cruz" autocomplete="name"/>
+        <input type="text" id="register-name" placeholder="Full name" autocomplete="name"/>
       </div>
       <div class="field">
         <label for="register-email">Email</label>
-        <input type="email" id="register-email" placeholder="you@university.edu" autocomplete="email"/>
+        <input type="email" id="register-email" placeholder="you@ama.edu.ph" autocomplete="email"/>
       </div>
       <div class="field">
         <label for="register-password">Password</label>

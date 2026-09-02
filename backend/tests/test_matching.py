@@ -1,6 +1,7 @@
 from matching import (
     adaptive_raw_score,
     apply_category_multiplier,
+    compare_serials,
     compute_match,
     location_boost,
     score_tier,
@@ -102,6 +103,32 @@ def test_compute_match_discards_weak_cross_category():
     assert tier is None
     assert "text_to_image" in breakdown
     assert breakdown["image_to_image"] is None
+
+
+def test_compare_serials_statuses():
+    assert compare_serials(None, None) == "missing"
+    assert compare_serials("", "") == "missing"
+    assert compare_serials("ABC123", None) == "one_sided"
+    assert compare_serials(None, "ABC123") == "one_sided"
+    assert compare_serials("abc-123", "ABC123") == "match"
+    assert compare_serials("IMEI 356938035643809", "356938035643809") == "match"
+    assert compare_serials("SN12345678", "5678") == "partial"
+    assert compare_serials("ABCDEFGH", "XXXXEFGH") == "partial"
+    assert compare_serials("PHONE-1111", "PHONE-2222") == "mismatch"
+
+
+def test_compare_serials_does_not_imply_clip_match():
+    # serial equality is a desk flag only — compute_match is independent
+    score, tier, *_ = compute_match(
+        text_to_image=0.40,
+        image_to_image=0.40,
+        found_text_to_lost_image=None,
+        lost_category="Gadgets",
+        found_category="Clothing",
+    )
+    assert compare_serials("SAMEIMEI", "SAMEIMEI") == "match"
+    assert tier is None
+    assert score < 0.55
 
 
 def test_compute_match_keeps_possible_same_category():

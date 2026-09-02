@@ -9,6 +9,32 @@ from locations import LOCATION_SET, parse_locations
 LOCATION_MATCH_BOOST = 0.06
 
 
+def normalize_serial(value: str | None) -> str | None:
+    if not value:
+        return None
+    cleaned = "".join(ch for ch in str(value).upper() if ch.isalnum())
+    return cleaned or None
+
+
+def compare_serials(lost_serial: str | None, found_serial: str | None) -> str:
+    """Staff verification flag only — never used to auto-claim or score CLIP."""
+    lost = normalize_serial(lost_serial)
+    found = normalize_serial(found_serial)
+    if not lost and not found:
+        return "missing"
+    if not lost or not found:
+        return "one_sided"
+    if lost == found:
+        return "match"
+    shorter, longer = (lost, found) if len(lost) <= len(found) else (found, lost)
+    # IMEI / serial typed with a prefix ("IMEI …") still counts as the same identifier
+    if len(shorter) >= 8 and shorter in longer:
+        return "match"
+    if len(lost) >= 4 and len(found) >= 4 and (lost[-4:] == found[-4:] or lost in found or found in lost):
+        return "partial"
+    return "mismatch"
+
+
 def adaptive_raw_score(
     text_to_image: float | None,
     image_to_image: float | None,

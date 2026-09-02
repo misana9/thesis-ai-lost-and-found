@@ -53,7 +53,7 @@ def validate_item_description(description: str | None, *, required: bool = True)
     if len(cleaned) < MIN_DESCRIPTION_CHARS or len(tokens) < MIN_DESCRIPTION_TOKENS:
         raise ValueError(
             "Description is too short. Include at least a couple of details "
-            "(e.g. “black Casio calculator with cracked case”)."
+            "(color, brand, or distinctive marks)."
         )
 
     meaningful = [t for t in tokens if t not in VAGUE_DESCRIPTIONS]

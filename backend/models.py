@@ -1,5 +1,5 @@
 from database import Base
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.sql import func
 from pgvector.sqlalchemy import Vector
 import uuid
@@ -18,6 +18,10 @@ class Users(Base):
     email_verified = Column(Boolean, nullable=False, server_default="false")
     email_verification_token = Column(String, nullable=True)
 
+    __table_args__ = (
+        Index("ix_users_email_verification_token", "email_verification_token"),
+    )
+
 
 class FoundItem(Base):
     __tablename__ = "found_items"
@@ -34,9 +38,18 @@ class FoundItem(Base):
     image_path = Column(String, nullable=True)
     image_embedding = Column(Vector(EMBEDDING_DIM), nullable=True)
     text_embedding = Column(Vector(EMBEDDING_DIM), nullable=True)
-    status = Column(String, nullable=False, server_default="available")  # available | in_process | processed
+    is_high_value = Column(Boolean, nullable=False, server_default="false")
+    serial_number = Column(String, nullable=True)
+    distinctive_marks = Column(String, nullable=True)
+    status = Column(String, nullable=False, server_default="available")  # available | in_process | at_desk | processed
     claimed_by_lost_id = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_found_items_status", "status"),
+        Index("ix_found_items_finder_email", "finder_email"),
+        Index("ix_found_items_finder_user_id", "finder_user_id"),
+    )
 
 
 class LostItem(Base):
@@ -52,8 +65,17 @@ class LostItem(Base):
     image_path = Column(String, nullable=True)
     image_embedding = Column(Vector(EMBEDDING_DIM), nullable=True)
     text_embedding = Column(Vector(EMBEDDING_DIM), nullable=True)
-    status = Column(String, nullable=False, server_default="open")  # open | in_process | processed
+    is_high_value = Column(Boolean, nullable=False, server_default="false")
+    serial_number = Column(String, nullable=True)
+    distinctive_marks = Column(String, nullable=True)
+    status = Column(String, nullable=False, server_default="open")  # open | in_process | at_desk | processed
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_lost_items_status", "status"),
+        Index("ix_lost_items_email", "email"),
+        Index("ix_lost_items_owner_user_id", "owner_user_id"),
+    )
 
 
 class Claim(Base):
@@ -64,10 +86,21 @@ class Claim(Base):
     lost_item_id = Column(String, ForeignKey("lost_items.id"), nullable=False)
     claimed_by_email = Column(String, nullable=True)
     claimed_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    status = Column(String, nullable=False, server_default="in_process")  # in_process | processed
+    status = Column(String, nullable=False, server_default="in_process")  # in_process | at_desk | processed | cancelled
     owner_confirmed = Column(Boolean, nullable=False, server_default="false")
     finder_confirmed = Column(Boolean, nullable=False, server_default="false")
+    desk_received = Column(Boolean, nullable=False, server_default="false")
+    desk_released = Column(Boolean, nullable=False, server_default="false")
     owner_confirm_token = Column(String, nullable=True)
     finder_confirm_token = Column(String, nullable=True)
     notify_message = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_claims_found_item_id", "found_item_id"),
+        Index("ix_claims_lost_item_id", "lost_item_id"),
+        Index("ix_claims_status", "status"),
+        Index("ix_claims_claimed_by_email", "claimed_by_email"),
+        Index("ix_claims_owner_confirm_token", "owner_confirm_token"),
+        Index("ix_claims_finder_confirm_token", "finder_confirm_token"),
+    )

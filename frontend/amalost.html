@@ -737,9 +737,14 @@ footer {
   background: rgba(2, 6, 23, 0.72);
   display: flex; align-items: center; justify-content: center;
   padding: 20px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .contact-modal {
   width: min(440px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--ink-mid);
   border: 1px solid var(--ink-edge);
   border-radius: var(--radius);
@@ -765,7 +770,7 @@ footer {
   letter-spacing: 0.5px; color: var(--text-3); margin-bottom: 4px;
 }
 .contact-detail-value {
-  font-size: 14px; font-weight: 600; color: var(--text-1); word-break: break-all;
+  font-size: 14px; font-weight: 600; color: var(--text-1); overflow-wrap: anywhere;
 }
 .contact-template-preview {
   margin: 12px 0 16px;
@@ -774,9 +779,17 @@ footer {
   border: 1px dashed var(--ink-edge);
   background: rgba(99,102,241,0.08);
   font-size: 12px; color: var(--text-2); line-height: 1.5; white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 190px;
+  overflow-y: auto;
 }
 .contact-modal-actions {
   display: flex; flex-direction: column; gap: 8px;
+  position: sticky;
+  bottom: -18px;
+  background: var(--ink-mid);
+  padding-top: 10px;
+  padding-bottom: 4px;
 }
 .contact-modal-actions .btn-secondary { width: 100%; }
 
@@ -784,6 +797,13 @@ footer {
   display: grid;
   grid-template-columns: 1fr;
   gap: 16px;
+}
+.admin-page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 20px 60px;
+  width: 100%;
+  box-sizing: border-box;
 }
 .admin-column-title {
   font-size: 13px;
@@ -802,7 +822,7 @@ footer {
 .admin-card-title { font-size: 14px; font-weight: 700; color: var(--text-1); margin-bottom: 4px; }
 .admin-card-body { font-size: 13px; color: var(--text-2); margin-bottom: 6px; line-height: 1.4; }
 .admin-card-meta { font-size: 11px; color: var(--text-3); }
-.admin-empty { font-size: 13px; color: var(--text-3); padding: 16px 0; }
+.admin-empty { font-size: 13px; color: var(--text-3); padding: 16px 0; grid-column: 1 / -1; }
 
 .admin-tabs {
   display: flex;
@@ -838,7 +858,79 @@ footer {
   padding: 2px 7px;
 }
 .admin-tab.active .admin-tab-count { color: #34D399; }
-.admin-tab-panel { margin-bottom: 32px; }
+.admin-tab-panel {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+  margin-bottom: 32px;
+  align-items: stretch;
+}
+.admin-tile {
+  display: flex;
+  flex-direction: column;
+  background: var(--ink-mid);
+  border: 1px solid var(--ink-edge);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  min-height: 100%;
+}
+.admin-tile-media {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: rgba(255,255,255,0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36px;
+  overflow: hidden;
+}
+.admin-tile-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.admin-tile-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px 14px;
+  flex: 1;
+}
+.admin-tile-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-1);
+  line-height: 1.3;
+}
+.admin-tile-desc {
+  font-size: 12px;
+  color: var(--text-2);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 2.8em;
+}
+.admin-tile-meta {
+  font-size: 11px;
+  color: var(--text-3);
+  line-height: 1.35;
+  word-break: break-word;
+}
+.admin-tile .dash-actions {
+  margin-top: auto;
+  padding-top: 8px;
+}
+.admin-tile .btn-admin-action {
+  width: 100%;
+}
+@media (max-width: 640px) {
+  .admin-tab-panel {
+    grid-template-columns: 1fr;
+  }
+}
 
 /* ── DASHBOARD ── */
 .dash-section { margin-bottom: 28px; }
@@ -921,17 +1013,6 @@ footer {
   text-decoration: underline;
   padding: 0;
 }
-.auth-forgot {
-  text-align: center;
-  font-size: 12px;
-  color: var(--text-3);
-  margin-top: 18px;
-  cursor: pointer;
-  background: none;
-  border: none;
-  font-family: inherit;
-  text-decoration: underline;
-}
 .lockout-banner {
   background: rgba(245,158,11,0.1);
   border: 1px solid rgba(245,158,11,0.3);
@@ -974,9 +1055,9 @@ footer {
       <div class="radar-ring"></div>
       <div class="radar-center"></div>
     </div>
-    <div class="eyebrow"><span class="live-dot"></span>Active across campus · AI-powered matching</div>
+    <div class="eyebrow"><span class="live-dot"></span>AMA campus lost &amp; found</div>
     <h1>Lost something<br>on <em>campus?</em></h1>
-    <p class="hero-sub">Report it. Someone finds it. AI matches them together — usually within the hour.</p>
+    <p class="hero-sub">Report a lost or found item. We match photos and descriptions, then the campus desk handles the return.</p>
     <div class="fork">
       <button class="fork-card lost" id="btn-start-lost">
         <span class="fork-emoji">😟</span>
@@ -997,23 +1078,23 @@ footer {
 
   <section class="section" id="how">
     <div class="section-eyebrow">How it works</div>
-    <div class="section-title">Three steps.<br>No desk visits.</div>
+    <div class="section-title">Three steps.<br>Return at the desk.</div>
     <div class="steps-list">
       <div class="step-item">
         <div class="step-icon s1">📸</div>
-        <div><div class="step-body-title">Someone uploads a photo</div><div class="step-body-desc">Finder snaps a photo of the item and reports where they found it — library, canteen, lecture hall, wherever.</div></div>
+        <div><div class="step-body-title">Someone uploads a photo</div><div class="step-body-desc">The finder takes a photo and reports where they found it — library, classroom, or anywhere on campus.</div></div>
       </div>
       <div class="step-item">
         <div class="step-icon s2">🧠</div>
-        <div><div class="step-body-title">AI compares it to lost reports</div><div class="step-body-desc">CLIP encodes the photo into a 512-dimension vector and instantly compares it against every active lost item report on campus.</div></div>
+        <div><div class="step-body-title">We compare it with open reports</div><div class="step-body-desc">The photo and description are matched against active lost and found reports on campus so you can review the closest results.</div></div>
       </div>
       <div class="step-item">
         <div class="step-icon s3">🔔</div>
-        <div><div class="step-body-title">Owner gets notified</div><div class="step-body-desc">When confidence is high enough, both people get pinged. The owner confirms and arranges pickup — no lost property office needed.</div></div>
+        <div><div class="step-body-title">Confirm, then pick up at the desk</div><div class="step-body-desc">If a match looks right, both parties are notified. Staff receive the item at the lost-and-found desk and release it to the verified owner.</div></div>
       </div>
     </div>
     <div class="embed-visual">
-      <div class="embed-label">Inside the AI — embedding space</div>
+      <div class="embed-label">How matching works</div>
       <div class="embed-canvas">
         <svg class="embed-svg" viewBox="0 0 340 160" preserveAspectRatio="none">
           <line x1="170" y1="80" x2="145" y2="55" stroke="#10B981" stroke-width="1.5" stroke-dasharray="60" stroke-dashoffset="60" opacity="0" style="animation: conn-line 0.6s ease 1.4s forwards"/>
@@ -1032,7 +1113,7 @@ footer {
         <div class="dot query-dot" style="left:50%;top:50%;width:14px;height:14px;background:#6366F1;"></div>
         <div class="dot-label" style="left:50%;top:50%;color:#818CF8;font-size:10px;font-weight:600;">your item</div>
       </div>
-      <div class="embed-caption">Each item becomes a point in AI space. Close points = similar items. AMAlost finds yours automatically.</div>
+      <div class="embed-caption">Similar items appear close together. AMAlost ranks the closest matches for you to confirm.</div>
     </div>
   </section>
 
@@ -1040,8 +1121,8 @@ footer {
 
   <section style="padding: 48px 24px; max-width:480px; margin: 0 auto;">
     <div class="cta-section">
-      <div class="cta-title">Start here — it takes 60 seconds</div>
-      <div class="cta-sub">No account needed. Just a photo or a description and we do the rest.</div>
+      <div class="cta-title">Ready to report an item?</div>
+      <div class="cta-sub">Sign in with your campus email, then file a lost or found report.</div>
       <div class="cta-btns">
         <button class="btn-white" id="btn-cta-lost">I lost something →</button>
         <button class="btn-outline-white" id="btn-cta-found">I found something</button>
@@ -1051,7 +1132,7 @@ footer {
 
   <footer>
     <div class="footer-logo">AMA<span>lost</span></div>
-    <div class="footer-note">AI-powered AMA campus lost &amp; found<br>Built with CLIP · ViT-B/32</div>
+    <div class="footer-note">AMA campus lost &amp; found<br>Library Information Desk</div>
   </footer>
 </div>
 
@@ -1088,7 +1169,7 @@ footer {
     <div class="logo" id="nav-logo-admin">AMA<span>lost</span></div>
     <div class="nav-right"></div>
   </nav>
-  <div class="flow-page" id="admin-container"></div>
+  <div class="admin-page" id="admin-container"></div>
 </div>
 
 <!-- ═══════════════════════════════════════ VIEW 5B: MY DASHBOARD ═══ -->
@@ -1118,6 +1199,11 @@ footer {
   <div class="flow-page" id="register-container"></div>
 </div>
 
+<script>
+  window.AMALOST_CONFIG = window.AMALOST_CONFIG || {
+    apiBase: `${location.protocol}//${location.hostname}:8000`,
+  };
+</script>
 <script src="main.js"></script>
 <div id="contact-modal-root" class="hidden" aria-live="polite"></div>
 </body>

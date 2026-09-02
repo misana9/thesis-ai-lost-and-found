@@ -1,15 +1,6 @@
 from pydantic import BaseModel
 
 
-class user(BaseModel):
-    email: str
-    password: str
-
-
-class userRegister(user):
-    full_name: str
-
-
 class AuthLoginRequest(BaseModel):
     email: str
     password: str
@@ -26,7 +17,7 @@ class AuthRegisterResponse(BaseModel):
     email: str | None = None
     mail_sent: bool = False
     mail_mode: str | None = None
-    # also returned when SMTP works so demos can open the link without digging through Gmail
+    # Only returned when SMTP is not configured (outbox mode)
     dev_verify_url: str | None = None
 
 
@@ -48,14 +39,12 @@ class tokenData(BaseModel):
     id: int
 
 
-class UserInDB(user):
-    hashed_password: str
-
-
 class CategoryPredictionResponse(BaseModel):
     predicted: str
     confidence: float
     all_scores: dict[str, float]
+    serial_likely: bool = False
+    high_value_suggested: bool = False
 
 
 class FoundItemResponse(BaseModel):
@@ -94,6 +83,9 @@ class MatchItem(BaseModel):
     same_location: bool = False
     tier: str
     scores_breakdown: ScoresBreakdown
+    is_high_value: bool = False
+    serial_on_file: bool = False
+    serial_status: str = "unknown"
 
 
 class LostMatchItem(BaseModel):
@@ -109,6 +101,9 @@ class LostMatchItem(BaseModel):
     same_location: bool = False
     tier: str
     scores_breakdown: ScoresBreakdown
+    is_high_value: bool = False
+    serial_on_file: bool = False
+    serial_status: str = "unknown"
 
 
 class LostItemResponse(BaseModel):
@@ -147,7 +142,6 @@ class ClaimResponse(BaseModel):
     category: str | None = None
     found_location: str | None = None
     lost_location: str | None = None
-    pickup_point: str = "Agree a public campus meetup — coordinate directly"
     mail_mode: str | None = None
     owner_mail_sent: bool = False
     finder_mail_sent: bool = False
@@ -192,6 +186,15 @@ class ClaimCancelResponse(BaseModel):
     lost_status: str | None = None
 
 
+class DeskCustodyResponse(BaseModel):
+    claim_id: str
+    status: str
+    desk_received: bool = False
+    desk_released: bool = False
+    message: str
+    processed: bool = False
+
+
 class DashboardClaim(BaseModel):
     id: str
     found_item_id: str
@@ -202,6 +205,8 @@ class DashboardClaim(BaseModel):
     finder_confirmed: bool = False
     category: str | None = None
     counterpart_email: str | None = None
+    owner_email: str | None = None
+    finder_email: str | None = None
     found_location: str | None = None
     lost_location: str | None = None
     can_cancel: bool = False
@@ -232,7 +237,6 @@ class ContactEmailResponse(BaseModel):
     category: str | None = None
     found_location: str | None = None
     lost_location: str | None = None
-    pickup_point: str = "Agree a public campus meetup — coordinate directly"
     notify_message: str | None = None
 
 
@@ -247,6 +251,9 @@ class FoundItemAdmin(BaseModel):
     finder_email: str | None
     image_url: str | None
     status: str
+    is_high_value: bool = False
+    serial_number: str | None = None
+    distinctive_marks: str | None = None
     created_at: str | None = None
 
 
@@ -259,6 +266,9 @@ class LostItemAdmin(BaseModel):
     email: str | None
     image_url: str | None
     status: str
+    is_high_value: bool = False
+    serial_number: str | None = None
+    distinctive_marks: str | None = None
     created_at: str | None = None
 
 
@@ -267,11 +277,24 @@ class ClaimAdmin(BaseModel):
     found_item_id: str
     lost_item_id: str
     claimed_by_email: str | None
+    owner_email: str | None = None
+    finder_email: str | None = None
+    category: str | None = None
     status: str
     owner_confirmed: bool = False
     finder_confirmed: bool = False
+    desk_received: bool = False
+    desk_released: bool = False
     notify_message: str | None
     created_at: str | None = None
+    serial_status: str = "unknown"
+    lost_has_serial: bool = False
+    found_has_serial: bool = False
+    lost_serial: str | None = None
+    found_serial: str | None = None
+    lost_marks: str | None = None
+    found_marks: str | None = None
+    serial_likely_category: bool = False
 
 
 class AdminQueueResponse(BaseModel):
@@ -284,4 +307,13 @@ class AdminDeleteResponse(BaseModel):
     ok: bool = True
     kind: str
     id: str
+    message: str
+
+
+class ReembedResponse(BaseModel):
+    ok: bool = True
+    lost_updated: int
+    found_updated: int
+    lost_skipped: int = 0
+    found_skipped: int = 0
     message: str

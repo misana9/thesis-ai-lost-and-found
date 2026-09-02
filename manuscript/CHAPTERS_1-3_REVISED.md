@@ -7,7 +7,7 @@ Campus studies likewise show that when formal channels are weak, people improvis
 
 Digitizing forms is only a partial answer. Web and mobile portals can collect reports into categories and searchable lists (Kim et al., 2019; Gupta & Sharma, 2020), yet many still leave the actual pairing of lost and found records to staff judgment or simple keyword filters. Keyword search breaks down when two people describe the same object differently, omit details, or rely mainly on photographs. Multimodal learning offers a stronger alternative. Models trained to relate images and language can place photos and captions in one representation space, then score how closely two submissions appear to refer to the same object (Peng, 2025). Architectures in the CLIP family, including Vision Transformer image encoders, make that comparison practical for service systems that must handle mixed visual and textual evidence.
 
-This study therefore develops **FindIt**, an AI-supported campus lost-and-found matcher built around image embeddings and semantic similarity. Members of the community file lost or found tickets through a web application. Each ticket is encoded with CLIP ViT-B/32; vectors are stored centrally; and candidate pairs are ranked by a multimodal similarity pipeline. Results that clear confidence thresholds appear as an ordered shortlist so a user can confirm the correct item even when it is not ranked first. After confirmation, the platform records the claim and emails the parties so they can arrange pickup through the university’s designated desk. The intent is to automate the costly comparison step while keeping people in control of the final decision.
+This study therefore develops **AMAlost**, an AI-supported campus lost-and-found matcher built around image embeddings and semantic similarity. Members of the community file lost or found tickets through a web application. Each ticket is encoded with CLIP ViT-B/32; vectors are stored centrally; and candidate pairs are ranked by a multimodal similarity pipeline. Results that clear confidence thresholds appear as an ordered shortlist so a user can confirm the correct item even when it is not ranked first. After confirmation, the platform records the claim and emails the parties so they can arrange pickup through the university’s designated desk. The intent is to automate the costly comparison step while keeping people in control of the final decision.
 
 ## 1.1 Project Context
 
@@ -15,11 +15,11 @@ Busy campuses concentrate movement, shared facilities, and high turnover of pers
 
 Informal substitutes do not close the gap. Department pages and student groups may publish photos of found items, but visibility is uneven and identity checks are often casual. Without a shared digital inventory that can compare new reports against existing ones, staff shoulder repetitive visual search while owners remain uncertain whether anything matching their loss has been turned in. The result is avoidable delay, duplicated effort, and avoidable loss of property.
 
-FindIt responds to that campus setting as a matching-centered service platform. It centralizes ticket intake, applies vision–language embeddings to score likely correspondences, and guides users through ranked review and claim confirmation. Physical custody stays with institutional process; the software contribution is faster, more consistent identification of promising lost–found pairs.
+AMAlost responds to that campus setting as a matching-centered service platform. It centralizes ticket intake, applies vision–language embeddings to score likely correspondences, and guides users through ranked review and claim confirmation. Physical custody stays with institutional process; the software contribution is faster, more consistent identification of promising lost–found pairs.
 
 ## 1.2 Purpose and Description
 
-The study aims to design and build a working lost-and-found matching algorithm, together with the application services needed to use it on campus. Where conventional practice depends on staff memory and keyword browsing, FindIt converts photographs and natural-language descriptions into embeddings and ranks likely counterparts with cosine similarity and weighted multimodal fusion.
+The study aims to design and build a working lost-and-found matching algorithm, together with the application services needed to use it on campus. Where conventional practice depends on staff memory and keyword browsing, AMAlost converts photographs and natural-language descriptions into embeddings and ranks likely counterparts with cosine similarity and weighted multimodal fusion.
 
 Technically, the prototype is a browser-based client connected to a FastAPI backend and a PostgreSQL database extended with pgvector. CLIP ViT-B/32 supplies a shared encoder for images and text. A lost submission searches available found inventory; a found submission reverse-searches open lost reports. In both directions, the system returns thresholded, ordered candidates rather than a single silent decision. Users may therefore select a second- or third-ranked item when it is clearly theirs. Confirmed claims update status fields and trigger coordination email so owner and finder can complete handoff at the official desk.
 
@@ -43,7 +43,7 @@ To develop an AI-powered lost-and-found matching algorithm that uses image embed
 
 ## 1.4 Conceptual Framework
 
-FindIt is framed as an Input–Process–Output system focused on multimodal matching and claim coordination.
+AMAlost is framed as an Input–Process–Output system focused on multimodal matching and claim coordination.
 
 **Inputs** include account credentials for optional authenticated use; lost-ticket fields such as description, optional photo, category, place, date, and owner email; found-ticket fields such as required photo, optional description, category, place, date, and finder email; and claim actions that identify which ranked pair the user accepts.
 
@@ -55,7 +55,7 @@ FindIt is framed as an Input–Process–Output system focused on multimodal mat
 
 ### 1.5.1 Scope of the Study
 
-The study covers design and implementation of FindIt as a web platform for institutional lost-and-found matching. In scope are ticket submission, CLIP-based embedding generation, multimodal similarity ranking with thresholds, ranked candidate review, claim confirmation, and email-supported coordination of pickup through campus desk procedures. Evaluation concerns functional behavior of these components as an integrated prototype. Users access the system through standard browsers over an internet connection. The software boundary includes the frontend, API, database with vector storage, matching services, and mail delivery configuration used for demonstration.
+The study covers design and implementation of AMAlost as a web platform for institutional lost-and-found matching. In scope are ticket submission, CLIP-based embedding generation, multimodal similarity ranking with thresholds, ranked candidate review, claim confirmation, and email-supported coordination of pickup through campus desk procedures. Evaluation concerns functional behavior of these components as an integrated prototype. Users access the system through standard browsers over an internet connection. The software boundary includes the frontend, API, database with vector storage, matching services, and mail delivery configuration used for demonstration.
 
 ### 1.5.2 Limitations of the Study
 
@@ -63,11 +63,11 @@ Matching quality tracks the clarity of uploaded photos and the usefulness of wri
 
 ## 1.6 Significance of the Study
 
-FindIt matters because it targets a routine campus service that is still largely manual at the comparison stage. An embedding-based ranker gives students and employees a single place to file reports and inspect likely matches, then continue to pickup after confirmation. Offices gain structured tickets and machine-ordered candidates instead of relying only on memory and ad hoc browsing. For the institution, the project is a concrete example of applying vision–language AI to student services. For researchers and developers, it documents an applied pipeline for multimodal scoring, thresholded shortlists, and confirmation-centered claims in a lost-and-found setting.
+AMAlost matters because it targets a routine campus service that is still largely manual at the comparison stage. An embedding-based ranker gives students and employees a single place to file reports and inspect likely matches, then continue to pickup after confirmation. Offices gain structured tickets and machine-ordered candidates instead of relying only on memory and ad hoc browsing. For the institution, the project is a concrete example of applying vision–language AI to student services. For researchers and developers, it documents an applied pipeline for multimodal scoring, thresholded shortlists, and confirmation-centered claims in a lost-and-found setting.
 
 ## 1.7 Definition of Terms
 
-**FindIt** — The campus lost-and-found matching platform produced in this study, including its web interface, embedding services, claim workflow, and notifications.
+**AMAlost** — The campus lost-and-found matching platform produced in this study, including its web interface, embedding services, claim workflow, and notifications.
 
 **CLIP (Contrastive Language–Image Pre-training)** — A model family that learns a joint space for images and text; this implementation uses ViT-B/32.
 
@@ -96,25 +96,25 @@ FindIt matters because it targets a routine campus service that is still largely
 # CHAPTER 2
 # REVIEW OF RELATED STUDIES
 
-This chapter surveys literature and related systems that motivate FindIt’s design. The discussion moves from conventional campus practice, to digital reporting platforms, to multimodal embedding retrieval, and finally to ranking policies suited to noisy real-world tickets.
+This chapter surveys literature and related systems that motivate AMAlost’s design. The discussion moves from conventional campus practice, to digital reporting platforms, to multimodal embedding retrieval, and finally to ranking policies suited to noisy real-world tickets.
 
 ## 2.1 Related Literature
 
 ### Conventional Campus Lost-and-Found Practice
 
-University lost-and-found work has long depended on counter staff, paper or spreadsheet logs, and face-to-face identification. Case evidence shows that incomplete notes and inconsistent wording make later matching unreliable (Mullins & Lee, 2017). Where no authoritative channel exists, communities fall back on chats and social feeds that neither preserve searchable history nor protect against mistaken or dishonest claims (Tan & Chong, 2023). Institutional write-ups of manual offices also describe cluttered records, privacy leakage, and slow validation when claimants arrive (Castro et al., 2022; Alston, 2022). The emotional cost of losing valued property adds urgency to any redesign that can shorten time-to-match (Nadeem et al., 2022). These accounts establish the service problem FindIt inherits: recovery fails not only from missing storage space, but from weak comparison infrastructure.
+University lost-and-found work has long depended on counter staff, paper or spreadsheet logs, and face-to-face identification. Case evidence shows that incomplete notes and inconsistent wording make later matching unreliable (Mullins & Lee, 2017). Where no authoritative channel exists, communities fall back on chats and social feeds that neither preserve searchable history nor protect against mistaken or dishonest claims (Tan & Chong, 2023). Institutional write-ups of manual offices also describe cluttered records, privacy leakage, and slow validation when claimants arrive (Castro et al., 2022; Alston, 2022). The emotional cost of losing valued property adds urgency to any redesign that can shorten time-to-match (Nadeem et al., 2022). These accounts establish the service problem AMAlost inherits: recovery fails not only from missing storage space, but from weak comparison infrastructure.
 
 ### Digital Reporting and Notification Platforms
 
 Browser and smartphone applications improved intake. Systems described by Kim et al. (2019) and Gupta and Sharma (2020) organize found inventory and support category or text search, yet pairing often remains manual. AUFound illustrates a split client model—mobile reporting for students and web tools for staff—with messaging that speeds awareness even while verification stays human-led (Castro et al., 2022). Campus web builds such as those of Pandey et al. (2020) and Shrivastava et al. (2025) add dashboards, uploads, and alerts, and report operational gains over bulletin-board practice. Salman (2022) emphasizes registration and direct contact between finder and owner once a candidate is known.
 
-Across these platforms, the durable lessons are centralized tickets, media attachments, and notifications. The recurring limitation is the matching engine itself: keyword filters and staff browsing do not scale cleanly when descriptions diverge or when photos carry most of the identity signal. FindIt keeps the ticket-and-notice pattern but inserts multimodal ranking between submission and confirmation.
+Across these platforms, the durable lessons are centralized tickets, media attachments, and notifications. The recurring limitation is the matching engine itself: keyword filters and staff browsing do not scale cleanly when descriptions diverge or when photos carry most of the identity signal. AMAlost keeps the ticket-and-notice pattern but inserts multimodal ranking between submission and confirmation.
 
 ### Multimodal Embeddings with CLIP and Vision Transformers
 
 Cross-modal retrieval research shows that contrastive vision–language training can align photographs with captions so cosine similarity becomes a meaningful relevance score (Peng, 2025). CLIP-style encoders, commonly built with Vision Transformer image towers, are therefore attractive when a service must compare a found photo to a lost description, or two photos of the same object taken under different conditions. Follow-on work examines data-efficient training, robustness, benchmarking, and finer local representations (Li et al., 2022; Fang et al., 2022; Cui et al., 2022; Dong et al., 2026). The shared implication is twofold: pretrained multimodal encoders are strong starting points, and downstream systems still need task-level policy because user media are noisy and look-alike objects are common.
 
-FindIt adopts CLIP ViT-B/32 as its encoder and then applies application-level fusion, contextual soft scoring, thresholds, and shortlist trimming. That combination treats the model as a feature generator for campus tickets rather than as an unsupervised final judge.
+AMAlost adopts CLIP ViT-B/32 as its encoder and then applies application-level fusion, contextual soft scoring, thresholds, and shortlist trimming. That combination treats the model as a feature generator for campus tickets rather than as an unsupervised final judge.
 
 ### Ranked Retrieval and Human Confirmation
 
@@ -124,26 +124,26 @@ Dense retrieval practice favors returning an ordered top-k set, especially when 
 
 Related work charts a path from paper logs to digital portals to multimodal retrieval. Digitization solved intake and visibility more than it solved comparison. Embedding models supply the missing comparison mechanism, provided the product layer defines thresholds, ranking, and confirmation.
 
-FindIt occupies that product layer for universities: ticket capture, CLIP embeddings, multimodal similarity ranking, ordered candidate review, and email coordination after a claim is accepted.
+AMAlost occupies that product layer for universities: ticket capture, CLIP embeddings, multimodal similarity ranking, ordered candidate review, and email coordination after a claim is accepted.
 
 ### 2.2.1 Similarities
 
-Prior systems and FindIt share the goals of faster recovery, clearer records, and reduced dependence on purely informal channels. They also share interest in categories, media uploads, and notifying stakeholders when progress occurs.
+Prior systems and AMAlost share the goals of faster recovery, clearer records, and reduced dependence on purely informal channels. They also share interest in categories, media uploads, and notifying stakeholders when progress occurs.
 
 ### 2.2.2 Differences
 
-Where many campus tools stop at searchable lists, FindIt computes multimodal embedding scores and presents a thresholded ranking. Where some research demos optimize benchmark retrieval alone, FindIt embeds that retrieval inside reporting and claim workflows used for institutional handoff.
+Where many campus tools stop at searchable lists, AMAlost computes multimodal embedding scores and presents a thresholded ranking. Where some research demos optimize benchmark retrieval alone, AMAlost embeds that retrieval inside reporting and claim workflows used for institutional handoff.
 
 ### 2.2.3 Limitations and Research Gaps
 
-Gaps remain around operational multimodal matching for noisy campus tickets, around over-trust in single top-1 automatic links, and around connecting ranked AI output to accountable confirmation and notice. FindIt addresses those gaps with an end-to-end matching algorithm and claim workflow tailored to university lost-and-found practice.
+Gaps remain around operational multimodal matching for noisy campus tickets, around over-trust in single top-1 automatic links, and around connecting ranked AI output to accountable confirmation and notice. AMAlost addresses those gaps with an end-to-end matching algorithm and claim workflow tailored to university lost-and-found practice.
 
 ---
 
 # CHAPTER 3
 # TECHNICAL REQUIREMENTS
 
-This chapter states the hardware, software, and peopleware needed to build and operate FindIt as an AI-powered lost-and-found matching platform with web access, vector storage, and claim notifications.
+This chapter states the hardware, software, and peopleware needed to build and operate AMAlost as an AI-powered lost-and-found matching platform with web access, vector storage, and claim notifications.
 
 ## 3.1 System Requirements
 
@@ -174,7 +174,7 @@ This chapter states the hardware, software, and peopleware needed to build and o
 
 | Component | Specification |
 |---|---|
-| Interface | Static web application for FindIt user flows |
+| Interface | Static web application for AMAlost user flows |
 | Serving | nginx within the Docker-based development compose setup |
 | Browsers | Recent Chrome, Firefox, Edge, or Safari |
 | Capabilities | Registration and login, lost/found filing, match review, claims, and queue inspection |
@@ -234,7 +234,7 @@ A thesis prototype may consolidate build roles in one developer; a live campus p
 
 ## 3.2 System Architecture
 
-FindIt is organized in layers.
+AMAlost is organized in layers.
 
 The presentation layer is the browser client used to file tickets, inspect ranked matches, confirm claims, and sign in. The application layer exposes REST endpoints for auth, category prediction, lost and found intake, match payloads, and claim lifecycle actions. The matching layer runs CLIP encoding and the scoring policy that yields tiered, trimmed rankings. The data layer keeps relational records and vectors in PostgreSQL/pgvector and stores uploaded images on the API host. The notification layer sends claim-related mail through SMTP or records it in the outbox.
 
