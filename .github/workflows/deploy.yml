@@ -42,14 +42,7 @@ jobs:
     - name: Azure Login
       uses: azure/login@v3
       with:
-        creds: |
-          {
-            "clientId": "${{ secrets.AZURE_CLIENT_ID }}",
-            "clientSecret": "${{ secrets.AZURE_CLIENT_SECRET }}",
-            "subscriptionId": "690f28c6-13e1-48a4-a147-bc21de43b9d3",
-            "tenantId": "${{ secrets.AZURE_TENANT_ID }}"
-          }
-
+        creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"690f28c6-13e1-48a4-a147-bc21de43b9d3","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
 
     - name: Deploy Backend to Azure
       uses: azure/webapps-deploy@v3
