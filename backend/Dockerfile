@@ -10,7 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends git \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
-RUN python -c "from transformers import CLIPProcessor, CLIPModel; CLIPModel.from_pretrained('openai/clip-vit-base-patch32'); CLIPProcessor.from_pretrained('openai/clip-vit-base-patch32')"
+
+RUN python -c "import clip; clip.load('ViT-B/32', device='cpu')"
 
 COPY . .
 
