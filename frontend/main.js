@@ -6,12 +6,6 @@
 ───────────────────────────────────────────── */
 
 function resolveApiBase() {
-  const cfg = window.AMALOST_CONFIG && window.AMALOST_CONFIG.apiBase;
-  if (typeof cfg === 'string' && cfg.trim()) return cfg.replace(/\/$/, '');
-
-  const stored = localStorage.getItem('amalost_api_base');
-  if (stored && stored.trim()) return stored.replace(/\/$/, '');
-
   return "https://amalostbackend-h7f5b0d6c5a6ewa9.southeastasia-01.azurewebsites.net";
 }
 const API_BASE = resolveApiBase();
