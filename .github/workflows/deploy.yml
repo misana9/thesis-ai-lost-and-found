@@ -39,11 +39,15 @@ jobs:
         push: true
         tags: ghcr.io/${{ steps.string.outputs.repo }}/amalost-backend:latest
 
+    - name: Azure Login
+      uses: azure/login@v3
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
     - name: Deploy Backend to Azure
       uses: azure/webapps-deploy@v3
       with:
-        app-name: 'amalostbackend' 
-        publish-profile: ${{ secrets.AZURE_BACKEND_PUBLISH_PROFILE }}
+        app-name: 'amalostbackend'
         images: 'ghcr.io/${{ steps.string.outputs.repo }}/amalost-backend:latest'
 
   build-and-deploy-frontend:
@@ -78,6 +82,6 @@ jobs:
     - name: Deploy Frontend to Azure
       uses: azure/webapps-deploy@v3
       with:
-        app-name: 'amalost' 
+        app-name: 'amalost'
         publish-profile: ${{ secrets.AZURE_FRONTEND_PUBLISH_PROFILE }}
         images: 'ghcr.io/${{ steps.string.outputs.repo }}/amalost-frontend:latest'
