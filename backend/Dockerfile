@@ -10,11 +10,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends git \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
+RUN python -c "from transformers import CLIPProcessor, CLIPModel; CLIPModel.from_pretrained('openai/clip-vit-base-patch32'); CLIPProcessor.from_pretrained('openai/clip-vit-base-patch32')"
+
 COPY . .
 
-EXPOSE 8000
+EXPOSE 80
 
 ENV OMP_NUM_THREADS=4
 ENV MKL_NUM_THREADS=4
 
-CMD ["sh", "-c", "until alembic upgrade head; do echo 'Waiting for database...'; sleep 2; done && uvicorn main:app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "until alembic upgrade head; do echo 'Waiting for database...'; sleep 2; done && uvicorn main:app --host 0.0.0.0 --port 80"]

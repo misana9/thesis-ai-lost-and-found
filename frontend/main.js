@@ -8,13 +8,16 @@
 function resolveApiBase() {
   const cfg = window.AMALOST_CONFIG && window.AMALOST_CONFIG.apiBase;
   if (typeof cfg === 'string' && cfg.trim()) return cfg.replace(/\/$/, '');
+  
   const stored = localStorage.getItem('amalost_api_base');
   if (stored && stored.trim()) return stored.replace(/\/$/, '');
-  const { protocol, hostname } = window.location;
-  return `${protocol}//${hostname}:8000`;
+  
+  // 🚀 Change your fallback production target to your live Azure backend URL!
+  return "https://azurewebsites.net";
 }
 
 const API_BASE = resolveApiBase();
+
 
 /** Absolute media URL with JWT query param (img tags cannot send Authorization). */
 function mediaUrl(pathOrUrl) {
