@@ -5,9 +5,7 @@ on:
     branches:
       - main
 
-# 🚀 THE CRUCIAL ACCESS BLOCK: Authorizes token exchanges to eliminate JSON parsing issues entirely
 permissions:
-  id-token: write
   contents: read
   packages: write
 
@@ -41,18 +39,11 @@ jobs:
         push: true
         tags: ghcr.io/${{ steps.string.outputs.repo }}/amalost-backend:latest
 
-    # 🚀 PASSWORD-LESS LOGIN: No string concatenation, completely immune to the JSON syntax bug
-    - name: Azure Login via OIDC
-      uses: azure/login@v3
-      with:
-        client-id: ${{ secrets.AZURE_CLIENT_ID }}
-        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-        subscription-id: '690f28c6-13e1-48a4-a147-bc21de43b9d3'
-
     - name: Deploy Backend to Azure
       uses: azure/webapps-deploy@v3
       with:
         app-name: 'amalostbackend'
+        publish-profile: ${{ secrets.AZURE_BACKEND_PUBLISH_PROFILE }}
         images: 'ghcr.io/${{ steps.string.outputs.repo }}/amalost-backend:latest'
 
   build-and-deploy-frontend:
