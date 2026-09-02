@@ -12,7 +12,7 @@ function resolveApiBase() {
   const stored = localStorage.getItem('amalost_api_base');
   if (stored && stored.trim()) return stored.replace(/\/$/, '');
 
-  return "https://amalostbackend.azurewebsites.net";
+  return "https://amalostbackend-h7f5b0d6c5a6ewa9.southeastasia-01.azurewebsites.net";
 }
 const API_BASE = resolveApiBase();
 
