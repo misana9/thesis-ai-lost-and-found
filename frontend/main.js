@@ -8,14 +8,12 @@
 function resolveApiBase() {
   const cfg = window.AMALOST_CONFIG && window.AMALOST_CONFIG.apiBase;
   if (typeof cfg === 'string' && cfg.trim()) return cfg.replace(/\/$/, '');
-  
+
   const stored = localStorage.getItem('amalost_api_base');
   if (stored && stored.trim()) return stored.replace(/\/$/, '');
-  
-  // 🚀 Change your fallback production target to your live Azure backend URL!
-  return "https://azurewebsites.net";
-}
 
+  return "https://amalostbackend.azurewebsites.net";
+}
 const API_BASE = resolveApiBase();
 
 
