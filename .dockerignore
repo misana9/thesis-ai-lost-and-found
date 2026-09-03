@@ -18,3 +18,4 @@ test
 frontend/pages
 node_modules
 *.md
+backend/.env
