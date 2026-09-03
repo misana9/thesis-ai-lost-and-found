@@ -6,7 +6,7 @@
 ───────────────────────────────────────────── */
 
 function resolveApiBase() {
-  return "https://amalostbackend-h7f5b0d6c5a6ewa9.southeastasia-01.azurewebsites.net";
+  return window.AMALOST_CONFIG?.apiBase || "/api";
 }
 const API_BASE = resolveApiBase();
 

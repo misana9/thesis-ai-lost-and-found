@@ -1,0 +1,10 @@
+.env
+.venv
+myvenv
+__pycache__
+*.pyc
+.pytest_cache
+uploads
+mail_outbox
+tests
+scripts
