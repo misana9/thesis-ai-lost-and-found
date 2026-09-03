@@ -1,7 +1,7 @@
 from datetime import timedelta
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -31,8 +31,14 @@ def build_user_token(user: models.Users) -> str:
     )
 
 
-def verification_link(token: str) -> str:
+def verification_link(token: str, request: Request | None = None) -> str:
     base = (settings.frontend_base_url or "http://localhost:3000").rstrip("/")
+    request_url = request.url if request else None
+    request_host = request_url.hostname if request_url else None
+    if request_url is not None and request_host and request_host not in {"localhost", "127.0.0.1", "::1"}:
+        configured_host = base.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0]
+        if configured_host in {"localhost", "127.0.0.1", "::1"}:
+            base = f"{request_url.scheme}://{request_host}:3000"
     # Frontend opens amalost.html and handles ?verify_token=
     if base.endswith(".html"):
         return f"{base}?verify_token={token}"
@@ -48,7 +54,11 @@ def send_verification_mail(user: models.Users, token: str) -> dict:
 
 
 @router.post("/register", response_model=schemas.AuthRegisterResponse)
-async def register(body: schemas.AuthRegisterRequest, db: Session = Depends(get_db)):
+async def register(
+    body: schemas.AuthRegisterRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     existing = oauth2.get_user(db, body.email.strip().lower())
     if existing:
         raise HTTPException(
@@ -74,9 +84,13 @@ async def register(body: schemas.AuthRegisterRequest, db: Session = Depends(get_
     db.commit()
     db.refresh(new_user)
 
-    mail_meta = send_verification_mail(new_user, verify_token)
+    verify_url = verification_link(verify_token, request)
+    mail_meta = notify_email_verification(
+        to_email=new_user.email,
+        name=new_user.full_name,
+        verify_url=verify_url,
+    )
     mail_mode = mail_meta.get("mode") or mail_delivery_mode()
-    verify_url = verification_link(verify_token)
 
     return {
         "message": (
@@ -93,6 +107,7 @@ async def register(body: schemas.AuthRegisterRequest, db: Session = Depends(get_
 @router.post("/resend-verification", response_model=schemas.AuthRegisterResponse)
 async def resend_verification(
     body: schemas.AuthResendVerificationRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     # always same response so we don't leak whether the email exists
@@ -116,7 +131,12 @@ async def resend_verification(
     db.commit()
     db.refresh(user)
 
-    mail_meta = send_verification_mail(user, verify_token)
+    verify_url = verification_link(verify_token, request)
+    mail_meta = notify_email_verification(
+        to_email=user.email,
+        name=user.full_name,
+        verify_url=verify_url,
+    )
     return {
         **generic,
         "mail_sent": bool(mail_meta.get("sent")),
@@ -124,7 +144,7 @@ async def resend_verification(
         "dev_verify_url": (
             None
             if (mail_meta.get("mode") or mail_delivery_mode()) == "smtp"
-            else verification_link(verify_token)
+            else verify_url
         ),
     }
 
