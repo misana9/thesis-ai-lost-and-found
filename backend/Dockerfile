@@ -15,9 +15,9 @@ RUN python -c "import clip; clip.load('ViT-B/32', device='cpu')"
 
 COPY . .
 
-EXPOSE 80
+EXPOSE 8000
 
 ENV OMP_NUM_THREADS=4
 ENV MKL_NUM_THREADS=4
 
-CMD ["sh", "-c", "until alembic upgrade head; do echo 'Waiting for database...'; sleep 2; done && uvicorn main:app --host 0.0.0.0 --port 80"]
+CMD ["sh", "-c", "until alembic upgrade head; do echo 'Waiting for database...'; sleep 2; done && uvicorn main:app --host 0.0.0.0 --port 8000"]
