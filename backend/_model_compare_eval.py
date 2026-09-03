@@ -9,7 +9,7 @@ import uuid
 import urllib.error
 import urllib.request
 
-API = os.environ.get("API_BASE", "http://localhost:8000")
+API = os.environ.get("API_BASE")
 OBJ = os.environ.get("OBJECTS_DIR", os.path.join(os.path.dirname(__file__), "..", "Objects"))
 MODEL_TAG = os.environ.get("MODEL_TAG", "unknown")
 

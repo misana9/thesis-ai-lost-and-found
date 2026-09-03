@@ -1,15 +1,14 @@
-/* ─────────────────────────────────────────────
-   AMAlost — main.js
-   All view logic, state, and API calls.
-   No inline event handlers — everything is
-   wired via addEventListener after DOM ready.
-───────────────────────────────────────────── */
 
 function resolveApiBase() {
-  return window.AMALOST_CONFIG?.apiBase || "/api";
+  const cfg = window.AMALOST_CONFIG && window.AMALOST_CONFIG.apiBase;
+  if (typeof cfg === 'string' && cfg.trim()) return cfg.replace(/\/$/, '');
+  const stored = localStorage.getItem('amalost_api_base');
+  if (stored && stored.trim()) return stored.replace(/\/$/, '');
+  const { protocol, hostname } = window.location;
+  return `${protocol}//${hostname}:8000`;
 }
-const API_BASE = resolveApiBase();
 
+const API_BASE = resolveApiBase();
 
 /** Absolute media URL with JWT query param (img tags cannot send Authorization). */
 function mediaUrl(pathOrUrl) {

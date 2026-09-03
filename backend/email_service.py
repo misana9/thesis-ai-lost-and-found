@@ -1,11 +1,8 @@
-# SMTP if configured, otherwise write HTML/text to mail_outbox/
-
 from __future__ import annotations
 
 from datetime import datetime
 from email.message import EmailMessage
 from html import escape
-from pathlib import Path
 import logging
 import smtplib
 import ssl
@@ -13,9 +10,6 @@ import ssl
 from config import settings
 
 logger = logging.getLogger("amalost.mail")
-
-OUTBOX_DIR = Path(__file__).resolve().parent / "mail_outbox"
-OUTBOX_DIR.mkdir(exist_ok=True)
 
 ANTI_FRAUD_TIPS_TEXT = """\
 Safety & anti-fraud tips
@@ -48,7 +42,7 @@ ANTI_FRAUD_TIPS_HTML = """
 
 
 def smtp_configured() -> bool:
-    return bool(getattr(settings, "smtp_host", None))
+    return bool(settings.smtp_host)
 
 
 def _smtp_password() -> str:
@@ -57,7 +51,7 @@ def _smtp_password() -> str:
 
 
 def mail_delivery_mode() -> str:
-    return "smtp" if smtp_configured() else "outbox"
+    return "smtp"
 
 
 def _wrap_html(*, title: str, eyebrow: str, body_html: str, cta_url: str | None = None, cta_label: str | None = None) -> str:
@@ -152,59 +146,35 @@ def send_email(
         "sent": False,
         "to": to,
         "subject": subject,
-        "mode": "smtp" if smtp_configured() else "outbox",
+        "mode": "smtp",
         "at": datetime.now().isoformat(timespec="seconds"),
     }
 
-    if smtp_configured():
-        try:
-            host = settings.smtp_host
-            port = int(getattr(settings, "smtp_port", 587) or 587)
-            user = getattr(settings, "smtp_user", None) or ""
-            password = _smtp_password()
-            use_tls = bool(getattr(settings, "smtp_tls", True))
+    try:
+        host = settings.smtp_host
+        port = int(getattr(settings, "smtp_port", 587) or 587)
+        user = getattr(settings, "smtp_user", None) or ""
+        password = _smtp_password()
+        use_tls = bool(getattr(settings, "smtp_tls", True))
 
-            if use_tls:
-                context = ssl.create_default_context()
-                with smtplib.SMTP(host, port, timeout=20) as server:
-                    server.starttls(context=context)
-                    if user:
-                        server.login(user, password)
-                    server.send_message(message)
-            else:
-                with smtplib.SMTP(host, port, timeout=20) as server:
-                    if user:
-                        server.login(user, password)
-                    server.send_message(message)
+        if use_tls:
+            context = ssl.create_default_context()
+            with smtplib.SMTP(host, port, timeout=20) as server:
+                server.starttls(context=context)
+                if user:
+                    server.login(user, password)
+                server.send_message(message)
+        else:
+            with smtplib.SMTP(host, port, timeout=20) as server:
+                if user:
+                    server.login(user, password)
+                server.send_message(message)
 
-            meta["sent"] = True
-            logger.info("SMTP mail sent to %s (%s)", to, subject)
-            return meta
-        except Exception as exc:
-            # SMTP configured: never fall back to outbox.
-            logger.exception("SMTP send failed (no outbox fallback): %s", exc)
-            meta["smtp_error"] = str(exc)
-            meta["sent"] = False
-            meta["mode"] = "smtp"
-            return meta
-
-    # Dev-only fallback when SMTP is not configured
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-    safe_to = to.replace("@", "_at_").replace("/", "_")
-    path = OUTBOX_DIR / f"{stamp}_{safe_to}.txt"
-    path.write_text(
-        f"From: {from_addr}\nTo: {to}\n"
-        f"Reply-To: {reply_to or ''}\n"
-        f"Subject: {subject}\nSent-At: {meta['at']}\n\n{text_body}\n",
-        encoding="utf-8",
-    )
-    if html_body:
-        html_path = OUTBOX_DIR / f"{stamp}_{safe_to}.html"
-        html_path.write_text(html_body, encoding="utf-8")
-        meta["outbox_html_path"] = str(html_path)
-    meta["sent"] = True
-    meta["outbox_path"] = str(path)
-    logger.info("Outbox mail written for %s -> %s", to, path)
+        meta["sent"] = True
+        logger.info("SMTP mail sent to %s (%s)", to, subject)
+    except Exception as exc:
+        logger.exception("SMTP send failed: %s", exc)
+        meta["smtp_error"] = str(exc)
     return meta
 
 

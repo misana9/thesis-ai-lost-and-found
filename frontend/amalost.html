@@ -1200,9 +1200,14 @@ footer {
 </div>
 
 <script>
-  window.AMALOST_CONFIG = window.AMALOST_CONFIG || {
-    apiBase: "/api",
-  };
+  window.AMALOST_CONFIG = window.AMALOST_CONFIG || {};
+  if (!window.AMALOST_CONFIG.apiBase) {
+    const localHosts = ['localhost', '127.0.0.1', '::1'];
+    const isLocal = localHosts.includes(window.location.hostname);
+    window.AMALOST_CONFIG.apiBase = isLocal
+      ? `${window.location.protocol}//${window.location.hostname}:8000`
+      : 'https://amalostbackend-h7f5b0d6c5a6ewa9.southeastasia-01.azurewebsites.net';
+  }
 </script>
 <script src="main.js"></script>
 <div id="contact-modal-root" class="hidden" aria-live="polite"></div>

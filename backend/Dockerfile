@@ -20,4 +20,4 @@ EXPOSE 8000
 ENV OMP_NUM_THREADS=4
 ENV MKL_NUM_THREADS=4
 
-CMD ["sh", "-c", "echo 'Starting database migrations'; alembic upgrade head && echo 'Migrations complete; starting Uvicorn' && exec uvicorn main:app --host 0.0.0.0 --port 8000 --log-level info"]
+CMD ["sh", "-c", "until alembic upgrade head; do echo 'Waiting for database...'; sleep 2; done && uvicorn main:app --host 0.0.0.0 --port 8000"]

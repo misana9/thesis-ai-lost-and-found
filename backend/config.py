@@ -2,21 +2,18 @@ from pydantic_settings import BaseSettings,  SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=None)
+    model_config = SettingsConfigDict(env_file=".env")
 
     database_hostname: str
     database_port: int
     database_name: str
     database_username: str
     database_password: str
-    database_sslmode: str = "prefer"
     secret_key: str
     algorithm: str
     access_token_expire_minutes: int
 
-    # Optional SMTP — if unset, emails go to backend/mail_outbox/.
-    # When set, failed SMTP does not fall back to outbox.
-    smtp_host: str | None = None
+    smtp_host: str
     smtp_port: int = 587
     smtp_user: str | None = None
     smtp_password: str | None = None
@@ -28,9 +25,5 @@ class Settings(BaseSettings):
 
     # Optional fine-tuned CLIP weights (ViT-B/32 state_dict checkpoint)
     clip_ft_checkpoint: str | None = None
-
-    class Config:
-        env_file = ".env"
-
 
 settings = Settings()  # type: ignore
