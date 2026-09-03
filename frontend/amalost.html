@@ -1206,7 +1206,7 @@ footer {
     const isLocal = localHosts.includes(window.location.hostname);
     window.AMALOST_CONFIG.apiBase = isLocal
       ? `${window.location.protocol}//${window.location.hostname}:8000`
-      : 'https://amalostbackend-h7f5b0d6c5a6ewa9.southeastasia-01.azurewebsites.net';
+      : `${window.location.protocol}//${window.location.hostname}:8000`;
   }
 </script>
 <script src="main.js"></script>
